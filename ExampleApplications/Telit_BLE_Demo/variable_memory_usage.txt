@@ -1,4 +1,4 @@
-52
+54
 0:0	GAP_AD_FLAG_BREDR_NOT_SUPPORTED
 0:0	GAP_AD_FLAG_GENERAL_DISCOVERABLE
 0:0	GAP_AD_FLAG_LIMITED_DISCOVERABLE
@@ -77,8 +77,9 @@
 0:0	system_endpoint_uart1
 0:0	system_endpoint_usb
 0:0	xgatt_data
-0:4	result
-4:20	in
-24:4	in_len
-28:20	out
-48:4	out_len
+0:20	in
+20:4	in_len
+24:20	out
+44:4	out_len
+48:4	result
+52:2	at
