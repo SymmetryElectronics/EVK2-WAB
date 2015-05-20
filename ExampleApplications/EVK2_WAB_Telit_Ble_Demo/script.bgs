@@ -1,0 +1,139 @@
+# ================================================================
+#
+# BGScript Demo     : EVK2 WAB cable replacement demo.
+#
+# Description       : Interacts with an Android or apple device to 
+#                     send data over a bluetooth connection and 
+#                     displays the data over UART on the PC
+# 
+# Author            : Rob Clucas 
+#
+# Wiki Page			: Step by step explanation of the code can be 
+#                     be found at :
+#
+#
+#                     Additionally, for other exampled for the 
+#                     EVK2 WAB board, see :
+#
+#
+#                     For the Wiki page, or :
+#
+#
+#                     For the source code.
+#
+# ================================================================
+#                       CHANGELOG:
+# ================================================================
+#   
+# 2015-05-20        : Initial release
+#
+# ================================================================
+
+dim in(20)          # Endpoint data in buffer
+dim in_len          # Endpoint data in buffer size
+dim out(20)         # Endpoint data out buffer
+dim out_len         # Endpoint data out buffer size
+dim result          # Endpoint RX error code
+
+# Event boot listener - Executed when the device is booted
+event system_boot( major, minor, patch, build, ll_version, protocol, hw )
+    # Disable all watermarks
+    call system_endpoint_set_watermarks( 5, 0, 0 )
+
+	# Set the device to advertise so that it can be found by the phone/tablet
+	call gap_set_mode( gap_general_discoverable, gap_undirected_connectable )
+end
+
+# Executed when the connection is lost 
+event connection_disconnected( connection, reason )
+	# Disable all watermarks
+	call system_endpoint_set_watermarks( 5, 0, 0 )
+
+	# Set the device to advertise so that a connection can be re-established
+	call gap_set_mode( gap_general_discoverable, gap_undirected_connectable )
+end 
+
+# Executed when there is incoming data from a bluetooth connection
+event attributes_value( connection, reason, handle, offset, value_len, value_data )
+	# Check that the data was written to xgatt
+	if handle = xgatt_data then 
+		# Copy the data from GATT database to out variable
+		out( 0 : value_len ) = value_data( 0 : value_len )
+		
+		# Set the length of out to the received number of bytes from value 
+		out_len = value_len 
+
+		# Enable TX watermarks so that the data can be sent over UART
+		call system_endpoint-set_watermarks( 5, $ff, out_len )
+	end if 
+end
+
+# Executed when data must be sent over UART
+event system_endpoint_watermark_tx( endpoint, size )
+	# Check that the endpoint is for UART
+	if endpoint = 5
+		# Disable the TX watermark
+
+		# Write the data from the out variable to UART
+		call system_endpoint_tx( 5, out_len, out( 0 : out_len ) )
+
+		# Write a response to the device on the other side 
+		# of the bluetooth connection (iOS or android device)
+		call attributes_user_write_response( 0, 0 )
+
+		# Reset the length of the output data to 0
+		out_len = 0
+end
+
+# Executed when the device on the other side of the bluetooth connection 
+# changes its Client Characteristic Configuration value changes (the 
+# device on the other side should do this by itself)
+event attributes_status( handle, flags )
+	if handle = xgatt_data then
+		if flags & 2 then 
+			# If the indicators are enabled :
+			# Set the RX watermark to trigger when 1 byte is received
+			call system_endpoint_set_watermarks( 5, 1, $ff )
+		else 
+			# If the indicators are disabled :
+			# Disable the RX watermarks
+			call system_endpoint_set_watermarks( 5, 0, $ff )
+		end if
+	end if
+end
+
+# Executed when there is data available from UART
+event system_endpoint_watermark_rx( endpoint, size )
+    # If the endpoint is the UART endpoint
+	if endpoint = 5
+		# Set the length of the input data
+        in_len = size
+
+		# Since we can only hvae 20 bytes of data, check this
+		if in_len > 20 then 
+			# If too much data, set the length to the max amount
+			in_len = 20
+		end if 
+
+        # Disable RX watermark
+        call system_endpoint_set_watermarks( 5, 0, $ff )
+
+		# Get the data from the UART
+		call system_endpoint_rx( 5, in_len )( result, in-len, in( 0 : in_len ) )
+
+		# Write the result to the device on the other side of the bluetooth
+		# connection
+		call attributes_write( xgatt_data, 0, in_len, in( 0 : in_len ) )
+	end if
+end
+
+# Executed when the remote device acknowledges data reception
+event attclient_indicated( connection, attrhandle )
+	if attrhandle = xgatt_data then 
+		# Enable the RX watermark for 1 byte so that 
+		# more data can be received over UART
+		call system_endpoint_set_watermarks( 5, 1, $ff )
+		
+		# Reset the amount of data that was received from UART
+		in_len = 0
+end
