@@ -1,4 +1,4 @@
-# ================================================================
+# ==============================================================================================================
 #
 # BGScript Demo     : EVK2 WAB cable replacement demo.
 #
@@ -11,23 +11,26 @@
 # Wiki Page			: Step by step explanation of the code can be 
 #                     be found at :
 #
-#
-#                     Additionally, for other exampled for the 
-#                     EVK2 WAB board, see :
+#                     https://github.com/X-Intellect/EVK2-WAB/wiki/Telit-----BLE-Communication-Example
 #
 #
-#                     For the Wiki page, or :
+#                     Additionally, for other examples for the 
+#                     EVK2 WAB board, see the Wiki page at:
+#
+#                     https://github.com/X-Intellect/EVK2-WAB/wiki/EVK2-WAB-Example-Applications
 #
 #
-#                     For the source code.
+#                     Or find the latest version of the source code at :
 #
-# ================================================================
-#                       CHANGELOG:
-# ================================================================
+#                     https://github.com/X-Intellect/EVK2-WAB/tree/master/ExampleApplications/Telit_BLE_Demo
+#
+# ==============================================================================================================
+#                                                 CHANGELOG:
+# ==============================================================================================================
 #   
 # 2015-05-20        : Initial release
 #
-# ================================================================
+# ==============================================================================================================
 
 dim in(20)          # Endpoint data in buffer
 dim in_len          # Endpoint data in buffer size
