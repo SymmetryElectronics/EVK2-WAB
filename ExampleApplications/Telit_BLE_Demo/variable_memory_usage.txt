@@ -1,4 +1,4 @@
-54
+68
 0:0	GAP_AD_FLAG_BREDR_NOT_SUPPORTED
 0:0	GAP_AD_FLAG_GENERAL_DISCOVERABLE
 0:0	GAP_AD_FLAG_LIMITED_DISCOVERABLE
@@ -83,3 +83,8 @@
 44:4	out_len
 48:4	result
 52:2	at
+54:2	ok
+56:4	connected
+60:4	attempts
+64:4	sleep
+68:0	timer

@@ -2,10 +2,11 @@
 #
 # BGScript Demo     : EVK2 WAB cable replacement demo.
 #
-# Description       : Interacts with an Android or apple device to 
-#                     send data over a bluetooth connection and 
-#                     displays the data over UART on the PC
-# 
+# Description       : Communicates with a Telit module over UART through the
+#                     EVK2 WAB. Waits for the telit to connect to the internet and then allows the
+#                     user to enter a number between 1 and 10 before sending a message back to the
+#                     user by SMS, demonstrating the use of the BLE and Telit modules on the WAB. 
+#
 # Author            : Rob Clucas 
 #
 # Wiki Page			: Step by step explanation of the code can be 
@@ -37,7 +38,12 @@ dim in_len          # Endpoint data in buffer size
 dim out(20)         # Endpoint data out buffer
 dim out_len         # Endpoint data out buffer size
 dim result          # Endpoint RX error code
-dim at(2)			# AT command for telit
+dim at(2)			# AT command for Telit
+dim ok(2)           # OK response from Telit
+dim connected       # If a connection has been established with the Telit module
+dim attempts        # The number of times we have tried to contact the Telit module
+dim sleep           # Counter used to simulate sleeping
+const timer = 32768 # Number of oscillations for 1 second
 
 # Event boot listener - Executed when the device is booted
 event system_boot( major, minor, patch, build, ll_version, protocol, hw )
@@ -49,6 +55,58 @@ event system_boot( major, minor, patch, build, ll_version, protocol, hw )
 
 	# Set the at buffer to hold the value 'AT'
 	at( 0 : 2 ) = "AT"
+
+	# Set a once off timer for +-3 seconds time which will be used to setup 
+	# the communication between the BLE module and the Telit module
+	# 
+	# Arg1 : The number of oscillations before the timer interrupts. The
+	#        frequency of  oscillation of the clock is +1 32700Hz so we have set
+	#        a timer for approximately 3 seconds from boot
+	# Arg2 : The handle of the timer
+	# Arg3 : Singleshot. We set this to 1 since the timer must only interrupt
+	#        once.
+    call hardware_set_soft_timer( 32000, 1, 1 )
+
+	# Set the connected variable to false
+	connected = 0
+end
+
+# Executed when the timer interrupt is triggered
+event hardware_soft_timer( handle )
+	# Check that the timer with handle = 1 caused the interrupt
+	if handle = 1 then 
+        # Create a temporary counter values
+        attempts = 0        # For the number of times we query the Telit module
+        sleep    = 0        # For the 'sleep' timer
+
+		# We will run a loop that will send the 'AT' command to the 
+		# Telit module until we get an okay response or we exceed 10 attempts
+		while  attempts < 10
+			# Disable the RX watermark
+			call system_endpoint_set_watermarks( 5, 0, $ff )
+
+            # Now write "AT\r" to the UART connection
+			call system_endpoint_tx( 5, 3, "AT\r" )
+
+			# Get the response from the Telit module
+			call system_endpoint_rx( 5, in_len )( result, in_len, in( 0 : in_len ) )
+
+			# The Telit should have responded, check that it responded with OK
+			if memcmp( in( 0 ), ok( 0 ), 2 ) then 
+				# The Telit is on, set connected and set attempts to terminate
+				# while loop
+				connected = 1
+                attempts  = 10
+
+				# DEBUGGING
+				call system_endpoint_tx( 5, 10, "SUCCESS\n" )
+			else 
+                # Increment the number of attempts and set to not connected
+                connected = 0
+				attempts  = attempts + 1
+            end if
+		end while
+    end if 
 end
 
 # Executed when the connection is lost 
@@ -96,7 +154,9 @@ event system_endpoint_watermark_tx( endpoint, size )
 
 		# Write a response to the device on the other side 
 		# of the bluetooth connection (iOS or android device)
-		call attributes_user_write_response( 0, 0 )
+		if connected = 1 
+		    call attributes_user_write_response( 0, 0 )
+        end if 
 
 		# Reset the length of the output data to 0
 		out_len = 0
@@ -140,8 +200,10 @@ event system_endpoint_watermark_rx( endpoint, size )
 		call system_endpoint_rx( 5, in_len )( result, in_len, in( 0 : in_len ) )
 
 		# Write the result to the device on the other side of the bluetooth
-		# connection
-		call attributes_write( xgatt_data, 0, in_len, in( 0 : in_len ) )
+		# connection, if there is an established connection with the telit
+		if connected = 1 
+		    call attributes_write( xgatt_data, 0, in_len, in( 0 : in_len ) )
+        end if
 	end if
 end
 
