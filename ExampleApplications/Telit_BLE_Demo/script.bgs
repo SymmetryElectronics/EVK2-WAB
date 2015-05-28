@@ -41,9 +41,6 @@ dim result          # Endpoint RX error code
 dim at(2)			# AT command for Telit
 dim ok(2)           # OK response from Telit
 dim connected       # If a connection has been established with the Telit module
-dim attempts        # The number of times we have tried to contact the Telit module
-dim sleep           # Counter used to simulate sleeping
-const timer = 12768 # Counts for manual timer
 
 # Event boot listener - Executed when the device is booted
 event system_boot( major, minor, patch, build, ll_version, protocol, hw )
@@ -56,7 +53,7 @@ event system_boot( major, minor, patch, build, ll_version, protocol, hw )
 	# Set the at buffer to hold the value 'AT'
 	at( 0 : 2 ) = "AT"
 
-    # Set the ok buffer value to 'OK'
+    # Set the ok buffer to hold the value to 'OK'
     ok( 0 : 2 ) = "OK"
 
 	# Set a once off timer for +-3 seconds time which will be used to setup 
@@ -64,11 +61,11 @@ event system_boot( major, minor, patch, build, ll_version, protocol, hw )
 	# 
 	# Arg1 : The number of oscillations before the timer interrupts. The
 	#        frequency of  oscillation of the clock is +1 32700Hz so we have set
-	#        a timer for approximately 1 seconds from boot
+	#        a timer for approximately 3 seconds from boot
 	# Arg2 : The handle of the timer
-	# Arg3 : Singleshot. We set this to 1 since the timer must only interrupt
-	#        once.
-    call hardware_set_soft_timer( 32768, 1, 1 )
+	# Arg3 : Repeated. We set this to 0 since the timer must continually
+	#        interrupt, in case there was no connection on the previous attempts
+    call hardware_set_soft_timer( 96768, 1, 0 )
 
 	# Set the connected variable to false
 	connected = 0
@@ -78,41 +75,59 @@ end
 event hardware_soft_timer( handle )
 	# Check that the timer with handle = 1 caused the interrupt
 	if handle = 1 then 
-        # Create a temporary counter values
-        attempts = 0        # For the number of times we query the Telit module
-        sleep    = 0        # Counter for manual sleep
-	
-		# We will run a loop that will send the 'AT' command to the 
-		# Telit module until we get an okay response or we exceed 10 attempts
-		while  attempts < 100
-			# Disable the RX watermarks
-			call system_endpoint_set_watermarks( 5, 0, $ff )
+		# We will send the 'AT' command to the telit if there
+		# is no connection to the Telit
+		if connected = 0
+		    # Disable the RX watermarks
+		    call system_endpoint_set_watermarks( 5, 0, $ff )
 
-            # Now write "AT\r" to the UART connection
-			call system_endpoint_tx( 5, 3, "AT\r" )
+		    # Now write "AT\r" to the UART connection
+		    call system_endpoint_tx( 5, 3, "AT\r" )
 
-			# Enable RX watermark so that we can get the response
-			call system_endpoint_set_watermarks( 5, 1, $ff )
+		    # Enable RX watermark so that we can get the response
+		    call system_endpoint_set_watermarks( 5, 2, $ff )
 
-			# The Telit should have responded, check that it responded with OK
-			if memcmp( in( 0 ), ok( 0 ), 2 ) then 
-				# The Telit is on, set connected and set attempts to terminate
-				# while loop
-				connected = 1
-                attempts  = 100
+            # Wait for a response
+		    while in_len = 0 
+            end while
 
-				# Note : By default the Telit module is set to echo commands
-				#        back, so if we send something to it, it will come back,
-				#        be read in by the uart rx, and sent to the app 
-				call system_endpoint_tx( 5, 10, "SUCCESS\n" )
-			else 
-                # Increment the number of attempts and set to not connected
-                connected = 0
+		    # The Telit should have responded, check that it responded with OK
+		    if memcmp( in( 0 ), ok( 0 ), 2 ) then 
+
+                # Output the results to the Telit 
+		        call attributes_write( xgatt_data, 0, 15 , "UART CONNECTED\n" )
+
+                # Set input buffer to empty
+                in_len = 0
+
+                # Set that the connection is established
+                connected = 1 
             end if
-            
-            # Increment number of attempts
-            attempts = attempts + 1
-		end while
+            # The Telit may be echoing commands, so check for that
+		    if memcmp( in( 0 ), at( 0 ), 2 ) then
+                # Check if the last two chars were okay
+                if memcmp( in( 5 ), ok( 0 ), 2 ) then
+                       
+                    # Output the results to the Telit 
+		            call attributes_write( xgatt_data, 0, 15 , "UART CONNECTED\n" )
+
+                    # Send a message to the Telit telling it to not echo
+                    call system_endpoint_tx( 5, 5, "ATE0\r" )
+				
+                    # Clear the input buffer
+                    in_len = 0
+
+                    # Set that a connection has been established
+                    connected = 1
+                else 
+                    # No connection
+                    connected = 0
+                end if
+            else 
+                # Send a message saying that there is no connection so far
+                call attributes_write( xgatt_data, 0, 3, "NC\n" )
+            end if
+		end if
     end if 
 end
 
@@ -176,10 +191,12 @@ end
 # device on the other side should do this by itself)
 event attributes_status( handle, flags )
 	if handle = xgatt_data then
-		if flags & 2 then 
-			# If the indicators are enabled :
-			# Set the RX watermark to trigger when 1 byte is received
-			call system_endpoint_set_watermarks( 5, 1, $ff )
+		if flags & 2 then
+            if connected = 1 then
+			    # If the indicators are enabled :
+			    # Set the RX watermark to trigger when 1 byte is received
+			    call system_endpoint_set_watermarks( 5, 1, $ff )
+            end if
 		else 
 			# If the indicators are disabled :
 			# Disable the RX watermarks
