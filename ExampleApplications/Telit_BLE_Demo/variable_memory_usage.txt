@@ -1,4 +1,4 @@
-60
+90
 0:0	GAP_AD_FLAG_BREDR_NOT_SUPPORTED
 0:0	GAP_AD_FLAG_GENERAL_DISCOVERABLE
 0:0	GAP_AD_FLAG_LIMITED_DISCOVERABLE
@@ -84,4 +84,7 @@
 48:4	result
 52:2	at
 54:2	ok
-56:4	connected
+56:6	cgsn
+62:4	connected
+66:20	ser_num
+86:4	ser_len
