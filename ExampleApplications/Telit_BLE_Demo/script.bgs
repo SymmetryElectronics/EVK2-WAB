@@ -51,33 +51,30 @@ dim ser_len         # Length of the serial number
 
 # Procedure to get the hardware and software number of the Telit module
 procedure get_telit_info()
-    # Enable the RX watermark so we can get the messages back
-    call system_endpoint_set_watermarks( 5, 1, $ff )
+   
+    # Disable the RX watermark so we can get the messages back
+    call system_endpoint_set_watermarks( 5, 0, $ff )
 
+    #connected = 2
+
+    call attributes_write( xgatt_data, 0, 5, "TEST\n" ) 
     # Send a command to the Telit module to get  it's serial number
-    call system_endpoint_tx( 5, 8, "AT#CGSN\r" )
+    call system_endpoint_tx( 5, 7, "AT+GMM\r" )
     
-    # Enable the RX watermark so we can get the messages back
-    call system_endpoint_set_watermarks( 5, 1, $ff )
+    # Enable watermarks 
+    #call system_endpoint_set_watermarks( 5, 1, $ff )
 
-    # Save the serial number
-    if  memcmp( in( 0 ), cgsn( 0 ), 6 ) then
-        memcpy( ser_num( 0 ), in( 5 ), in_len - 5 )
-
-        # Set ser_num length and reset in_len
-        ser_len = in_len - 5
-        in_len = 0
-
-        # Write the produt number to the gatt database
-        call attributes_write( xgatt_data, 0, ser_len, ser_num( 0 : ser_len ) )
-    end if 
+    # Wait for response 
+    while in_len = 0
+        call attributes_write( xgatt_data, 0, 5, "TEST\n" ) 
+    end while
 end 
 
 # Procedure to test if the Telit module has an internet connection 
 procedure test_telit_internet()
 
     # Disable RX watermark
-    call system_endpoint_set_watermarks( 5, 1 , $ff )
+    call system_endpoint_set_watermarks( 5, 0 , $ff )
 
     # Send the internet test command
     call system_endpoint_tx( 5, 9, "AT+CREG?\r" )
@@ -120,8 +117,7 @@ event system_boot( major, minor, patch, build, ll_version, protocol, hw )
 	#        interrupt, in case there was no connection on the previous attempts
     call hardware_set_soft_timer( 96768, 1, 0 )
 
-	# Set the connected variable to false
-	connected = 0
+    connected = 0
 end
 
 # Executed when the timer interrupt is triggered
@@ -129,7 +125,7 @@ event hardware_soft_timer( handle )
 	# Check that the timer with handle = 1 caused the interrupt
 	if handle = 1 then 
         # If a connection has been established on the previous interrupt
-        if connected = 1 then
+        if connected then
             # Enable RX watermarks 
             call system_endpoint_set_watermarks( 5, 1, $ff )
             
@@ -141,7 +137,7 @@ event hardware_soft_timer( handle )
 		# If there has been no connection established then
 		# we will send the 'AT' command to the telit to 
 		# check if it is on
-		if connected = 0
+		if connected = 0 then
 		    # Disable the RX watermarks
 		    call system_endpoint_set_watermarks( 5, 0, $ff )
 
@@ -165,11 +161,11 @@ event hardware_soft_timer( handle )
 		        call attributes_write( xgatt_data, 0, 15 , "UART CONNECTED\n" )
 
                 # Get the Telit's information 
-                #call get_telit_info()
-                call test_telit_internet()
+                call get_telit_info()
+                #call test_telit_internet()
 
                 # Set that the connection is established
-                connected = 1 
+                connected = 2
             end if
             # The Telit may be echoing commands, so check for that
 		    if memcmp( in( 0 ), at( 0 ), 2 ) then
@@ -177,36 +173,32 @@ event hardware_soft_timer( handle )
                 if memcmp( in( 5 ), ok( 0 ), 2 ) then
 
                     # Disable RX watermarks 
-                    call system_endpoint_set_watermarks( 5, 9, $ff )
+                    call system_endpoint_set_watermarks( 5, 0, $ff )
 
                     # Output the results to the Telit 
 		            call attributes_write( xgatt_data, 0, 15 , "UART CONNECTED\n" )
 
                     # Get the Telit model information 
-                    #call get_telit_info()
+                    call get_telit_info()
                     #call test_telit_internet()
 
                     # Send a message to the Telit telling it to not echo
                     call system_endpoint_tx( 5, 5, "ATE1\r" )
 
                     #call system_endpoint_set_watermarks( 5, 9, $ff )
-                    call system_endpoint_tx( 5, 10, "AT+CREG?\r" )
-                    call system_endpoint_set_watermarks( 5, 1, $ff )
+                    #call system_endpoint_tx( 5, 7, "AT+GMM\r" )
+                    #call system_endpoint_set_watermarks( 5, 1, $ff )
+                    #call get_telit_info()
 
                     # Set that a connection has been established
                     connected = 2
-                else 
-                    # No connection
-                    connected = 0
                 end if
-            else
-                if connected = 0 then  
-                    # Send a message saying that there is no connection so far
-                    call attributes_write( xgatt_data, 0, 20, "QUERYING TELIT ...\n" )
-                end if
-            end if
-		end if
-    end if 
+             else
+                 # Send a message saying that there is no connection so far
+                 call attributes_write( xgatt_data, 0, 20, "QUERYING TELIT ...\n" )
+             end if
+         end if
+    end if
 end
 
 # Executed when the connection is lost 
@@ -225,10 +217,10 @@ event attributes_value( connection, reason, handle, offset, value_len, value_dat
 		# Copy the data from GATT database to out variable
 		out( 0 : value_len ) = value_data( 0 : value_len )
 		
-        out( value_len : value_len + 1 ) = "\r"
+        out( value_len : value_len + 2 ) = "\r\n"
 
 		# Set the length of out to the received number of bytes from value 
-		out_len = value_len  + 1
+		out_len = value_len  + 2
 
 		# Enable TX watermarks so that the data can be sent over UART
 		call system_endpoint_set_watermarks( 5, $ff, out_len )
