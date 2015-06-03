@@ -1,4 +1,4 @@
-90
+184
 0:0	GAP_AD_FLAG_BREDR_NOT_SUPPORTED
 0:0	GAP_AD_FLAG_GENERAL_DISCOVERABLE
 0:0	GAP_AD_FLAG_LIMITED_DISCOVERABLE
@@ -81,10 +81,18 @@
 20:4	in_len
 24:20	out
 44:4	out_len
-48:4	result
-52:2	at
-54:2	ok
-56:6	cgsn
-62:4	connected
-66:20	ser_num
-86:4	ser_len
+48:20	cell
+68:4	cell_len
+72:20	sms_comm
+92:13	sms
+105:4	result
+109:2	at
+111:2	ok
+113:3	netok
+116:13	hn
+129:17	sn
+146:6	cgsn
+152:4	connected
+156:20	ser_num
+176:4	ser_len
+180:4	counter
