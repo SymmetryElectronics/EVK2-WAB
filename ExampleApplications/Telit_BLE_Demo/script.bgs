@@ -173,26 +173,24 @@ end
 event hardware_soft_timer( handle )
 	# Check that the timer with handle = 1 caused the interrupt
 	if handle = 1 then
+		
+		if connected = 9 then 
+			call attributes_write( xgatt_data, 0 , 4, "TEST" )
+		end if 
+	
 		# Once all 5 checks are done then we can enable
 		# the RX watermarks and bluetooth messages from device 
-        if connected = 9 then
+        if connected = 7 then
             # Enable RX watermarks 
-            call system_endpoint_set_watermarks( 5, 1, $ff )
+            #call system_endpoint_set_watermarks( 5, 1, $ff )
             
             # Set the connected state to globally connected so that the 
             # rest of the application can function normally
-            #connected = 10
-        end if
+            connected = 8
 
-		# The number has been saved, 
-		# ask the user a question
-		if connected = 7 then
-			connected = 8
-
-			# Ask the user to enter a number
-			# between 1 and 10
-			call attributes_write( xgatt_data, 0, 18, "ENTER NUM (1-10):\n" )
-		end if
+			call attributes_write( xgatt_data, 0, 18, "ENTER NUM (1-10):\n" )	
+ 
+        end if 
 
 		# If all the intialisation tests are complete,
 		# ask the user for their cell number
@@ -398,36 +396,35 @@ event attributes_value( connection, reason, handle, offset, value_len, value_dat
 	
 	# If the user entered a number
 	if connected = 8 then 
-	
-		connected = 9
+
+		call system_endpoint_set_watermarks( 5, 0, $ff )
 
 		# Send command to Telit telling it we want to use strings
 		call system_endpoint_tx( 5, 10, "AT+CMGF=1\r" )
-
+	
+		call system_endpoint_set_watermarks( 5, 1, $ff )
+		
 		# Create the sms command for the Telit
 		sms_comm( 8 : 9 ) = $22					# " character
 		sms_comm( 18: 19 ) = $22
-		sms_comm( 9 : cell_len ) = cell( 0 : cell_len )
-					
+		memcpy( sms_comm( 9 ), cell( 0 ), cell_len ) 
+		
+		call attributes_write( xgatt_data, 0, 19, sms_comm( 0 :19 ) )
+			
 		if out( 0 : 1 ) < 5 then 
 			# Set the sms buffer
 			sms( 0 : 12 ) = "Less than 5!"
 			sms( 12 : 13 ) = "\1A"				# Crtl-z to send sms
 
 			# Send a message to the telit that it will send as an sms
-			call system_endpoint_tx( 5, 13, sms( 0 : 13 ) )
-	
+			call system_endpoint_tx( 5, 13, sms( 0 : 13 ) )	
 		else
-		
-		end if
-
-		
-		call attributes_write( xgatt_data, 0, 5, "HELLO" )
-			
+		end if	
 	end if
 
 	# If we have just asked for the cell number 
-	if connected = 6 then 
+	if connected = 6 then
+ 
 		# Store the cell number
 		cell( 0 : out_len ) = out( 0 : out_len )
 
@@ -436,8 +433,11 @@ event attributes_value( connection, reason, handle, offset, value_len, value_dat
 
 		# Tell the user that the number is saved
 		call attributes_write( xgatt_data, 0, 13, "NUMBER SAVED\n" )
+		
+		# Let the device know that we have received the response
+		call attributes_user_write_response( 0, 0 )	
 
-		# Set that the number has been set
+		# Set that this stage of the testing is finished
 		connected = 7
 	end if 
 end
@@ -454,7 +454,7 @@ event system_endpoint_watermark_tx( endpoint, size )
 
 		# Write a response to the device on the other side 
 		# of the bluetooth connection (iOS or android device)
-		if connected = 9 
+		if connected = 8 
 		    call attributes_user_write_response( 0, 0 )
         end if 
 
@@ -469,7 +469,7 @@ end
 event attributes_status( handle, flags )
 	if handle = xgatt_data then
 		if flags & 2 then
-            if connected = 9 then
+            if connected = 8 then
 			    # If the indicators are enabled :
 			    # Set the RX watermark to trigger when 1 byte is received
 			    call system_endpoint_set_watermarks( 5, 1, $ff )
@@ -503,7 +503,7 @@ event system_endpoint_watermark_rx( endpoint, size )
 
 		# Write the result to the device on the other side of the bluetooth
 		# connection, if there is an established connection with the telit
-		if connected = 9 
+		if connected = 8 
 		    call attributes_write( xgatt_data, 0, in_len, in( 0 : in_len ) )
         end if
 	end if
