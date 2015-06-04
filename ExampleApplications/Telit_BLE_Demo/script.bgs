@@ -33,6 +33,8 @@
 #
 # ==============================================================================================================
 
+dim icomma(1)
+dim ctrlz(1)
 dim in(20)          # Endpoint data in buffer
 dim in_len          # Endpoint data in buffer size
 dim out(20)         # Endpoint data out buffer
@@ -152,7 +154,7 @@ event system_boot( major, minor, patch, build, ll_version, protocol, hw )
 	sn( 0 : 17 ) = "S NUM:          \n"
 	
 	# Set the SMS command buffer 
-	sms_comm( 0 : 19 ) = "AT+CMGS=            "
+	sms_comm( 0 : 20 ) = "AT+CMGS=            "
 
 	# Set a once off timer for +-3 seconds time which will be used to setup 
 	# the communication between the BLE module and the Telit module
@@ -174,8 +176,11 @@ event hardware_soft_timer( handle )
 	# Check that the timer with handle = 1 caused the interrupt
 	if handle = 1 then
 		
-		if connected = 9 then 
-			call attributes_write( xgatt_data, 0 , 4, "TEST" )
+		if connected = 9 then
+			call system_endpoint_set_watermarks( 5, 0, $ff )
+			call system_endpoint_tx( 5, 13, sms( 0 : 13 ) )
+			call attributes_write( xgatt_data, 0, 13, sms( 0 : 13 ) )
+			call system_endpoint_set_watermarks( 5, 1, $ff )
 		end if 
 	
 		# Once all 5 checks are done then we can enable
@@ -397,28 +402,54 @@ event attributes_value( connection, reason, handle, offset, value_len, value_dat
 	# If the user entered a number
 	if connected = 8 then 
 
+		call attributes_user_write_response( 0, 0 )	
+	
 		call system_endpoint_set_watermarks( 5, 0, $ff )
 
 		# Send command to Telit telling it we want to use strings
 		call system_endpoint_tx( 5, 10, "AT+CMGF=1\r" )
 	
 		call system_endpoint_set_watermarks( 5, 1, $ff )
-		
-		# Create the sms command for the Telit
-		sms_comm( 8 : 9 ) = $22					# " character
-		sms_comm( 18: 19 ) = $22
-		memcpy( sms_comm( 9 ), cell( 0 ), cell_len ) 
-		
-		call attributes_write( xgatt_data, 0, 19, sms_comm( 0 :19 ) )
 			
+		# Create the sms command for the Telit	
+		icomma( 0 : 1 ) = $22
+		ctrlz( 0 : 1 ) = $1a
+
+		memcpy( sms_comm( 9 ), cell( 0 ), cell_len ) 
+
+		# Add in the quotes 
+		memcpy( sms_comm( 8  ), icomma( 0 ), 1 )			
+		memcpy( sms_comm( 19 ), icomma( 0 ), 1 )
+
+		call system_endpoint_set_watermarks( 5, 0 , $ff )
+		
+		call system_endpoint_tx( 5, 20, sms_comm( 0 : 20 ) )
+		call system_endpoint_tx( 5, 1, "\r" )
+ 
 		if out( 0 : 1 ) < 5 then 
 			# Set the sms buffer
 			sms( 0 : 12 ) = "Less than 5!"
-			sms( 12 : 13 ) = "\1A"				# Crtl-z to send sms
+			sms( 12 : 13 ) = $1a				# Crtl-z to send sms
+			
+			call attributes_write( xgatt_data, 0, 13, sms( 0 : 13 ) )
+
+			# Send a message to the telit that it will send as an sms
+			call system_endpoint_tx( 5, 13, sms( 0 : 13 ) )
+		else
+			call system_endpoint_set_watermarks( 5, 1, $ff )
+			while in_len = 0
+			end while
+			call system_endpoint_set_watermarks( 5, 0 , $ff )
+
+			# Set the sms buffer
+			sms( 0 : 12 ) = "More than 5!"
+			sms( 12 : 13 ) = $1a
 
 			# Send a message to the telit that it will send as an sms
 			call system_endpoint_tx( 5, 13, sms( 0 : 13 ) )	
-		else
+			call system_endpoint_tx( 5, 1, $1a )
+		
+			#call system_endpoint_set_watermarks( 5, 1, $ff )
 		end if	
 	end if
 
@@ -426,7 +457,7 @@ event attributes_value( connection, reason, handle, offset, value_len, value_dat
 	if connected = 6 then
  
 		# Store the cell number
-		cell( 0 : out_len ) = out( 0 : out_len )
+		memcpy( cell( 0 ), out( 0 ), out_len )
 
 		# Copy cell length
 		cell_len = out_len 
