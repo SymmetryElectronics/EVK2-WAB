@@ -56,38 +56,6 @@ dim connected       # State the program is in, to determine if the Telit can be 
 #                                            GENERAL PROCEDURES                                                  #
 # ============================================================================================================== #
 
-# Procedure to get the hardware and software number of the Telit module
-procedure get_telit_info()
-   
-    # Disable the RX watermark so we can get the messages back
-    call system_endpoint_set_watermarks( 5, 0, $ff )
-
-    # Send a command to the Telit module to get  it's serial number
-    call system_endpoint_tx( 5, 7, "AT+GMM\r" )
-    
-	while in_len = 0
-		# Get the response
-		call system_endpoint_rx( 5, in_len )( result, in_len, in( 0 : in_len ) )
-    end while
-	
-	call attributes_write( xgatt_data, 0, in_len, in( 0 : in_len ) )
-end 
-
-# Procedure to test if the Telit module has an internet connection 
-procedure test_telit_internet()
-
-    # Disable RX watermark
-    call system_endpoint_set_watermarks( 5, 0 , $ff )
-
-    # Send the internet test command
-    call system_endpoint_tx( 5, 9, "AT+CREG?\r" )
-    
-    # Enable RX watermarks so that the responses can be retrieved
-    call system_endpoint_set_watermarks( 5, 1, $ff ) 
-
-end 
-
-
 # Procedure for for checking Telit module
 procedure check_telit_interface()
 
@@ -151,26 +119,34 @@ event hardware_soft_timer( handle )
 	
 	# Check that the timer with handle = 1 caused the interrupt
 	if handle = 1 then
-		
-		# Once all 5 checks are done then we can enable
-		# the RX watermarks and bluetooth messages from device 
-        if connected = 7 then
-            # Enable RX watermarks 
-            #call system_endpoint_set_watermarks( 5, 1, $ff )
-            
-            # Set the connected state to globally connected so that the 
-            # rest of the application can function normally
-            connected = 8
 
-			call attributes_write( xgatt_data, 0, 18, "ENTER NUM (1-10):\n" )	
- 
+		# If the prompt for the sms message is open on the Telit
+		if connected = 9 then
+			# Disable the RX watermark
+			call system_endpoint_set_watermarks( 5, 0, $ff )
+			
+			# Send the sms and the CTRL-Z character to the Telit 
+			call system_endpoint_tx( 5, 12, sms( 0 : 12 ) )	
+			call system_endpoint_tx( 5, 1, "\x1a" )	
+
+			# Tell the user that the message has sent
+			call attributes_write( xgatt_data, 0, 9, "SMS SENT\n" )
+			
+			# Set that the sms has been sent
+			connected = 10	
+		end if 
+
+		# Once the cellphone number has been stored 
+		# prompt the user to enter a number
+        if connected = 7 then
+            connected = 8				# Set that this part is completd
+			call attributes_write( xgatt_data, 0, 18, "ENTER NUM (0-9):\n" )	
         end if 
 
-		# If all the intialisation tests are complete,
-		# ask the user for their cell number
+		# Network and GPRS are present so
+        # ask the user for a cell number
 		if connected = 5 then
-			# Set that the number is sent
-			connected = 6
+			connected = 6				# Set that this part is complete
 			call attributes_write( xgatt_data, 0, 18, "ENTER CELL NUMBER\n" )
 		end if 
 
@@ -212,7 +188,6 @@ event hardware_soft_timer( handle )
 		# If the Telit is on, we can check for the 
 		# Telit hardware number
 		if connected = 1 then 
-			
 			# Disable the RX watermark so we can get the messages back
 			call system_endpoint_set_watermarks( 5, 0, $ff )
 
@@ -235,20 +210,19 @@ event hardware_soft_timer( handle )
     		# and then 'OK'. If this happens then it gets ignored 
     		# and another attempt is made on the next interrupt
     		if memcmp( hn( 7 ), ok( 0 ), 2 ) != 1 then
-				connected = 2
+				connected = 2				# Set that this stage is complete
 				call attributes_write( xgatt_data, 0, 13, hn( 0 : 13 ) )
         		in_len = 0	
     		else
         		# Write nothing (to flush the buffer) and try again
-        		call attributes_write( xgatt_data, 0, 0, hn( 0 : 0 ) )
-        		connected = 1
+        		call attributes_write( xgatt_data, 0, 0, hn( 0 : 0 ) )		
+        		connected = 1				# Set that this stage is not complete
     		end if
 		end if
 
 		# If the hardware number has been received, 
 		# get the software number
 		if connected = 2 then 
-			
 			# Disable RX watermarks
 			call system_endpoint_set_watermarks( 5, 0, $ff )
 
@@ -271,19 +245,18 @@ event hardware_soft_timer( handle )
     		# and then 'OK'. If this happens then it gets ignored 
     		# and another attempt is made on the next interrupt
 			if memcmp( sn( 7 ), ok( 0 ), 2 ) != 1 then
-				connected = 3
+				connected = 3					# Set that this stage is complete
 				call attributes_write( xgatt_data, 0, 17, sn( 0 : 17 ) )	
 				in_len = 0
 			else
 				# Write nothing (to flush the buffer) and try again
 				call attributes_write( xgatt_data, 0, 0, sn( 0 : 0 ) )
-				connected = 2
+				connected = 2					# Set that this stage is not complete
 			end if
 		end if
 
-		# Got hardware and software number, test internet connection
+		# Test if there is a network connection present
 		if connected = 3 then 
-			
 			# Disable RX watermarks
 			call system_endpoint_set_watermarks( 5, 0, $ff )
 
@@ -298,22 +271,21 @@ event hardware_soft_timer( handle )
 			end while 
 			
 			# Check that the hardware number is not invalid
+    		# Sometimes the Telit responds with a blank message
+    		# and then 'OK'. If this happens then it gets ignored 
+    		# and another attempt is made on the next interrupt
 			if memcmp( in( 7 ), netok( 0 ), 3 ) = 1 then
-				# Sometimes the telit responds with a blank message 
-				# then OK and then the hardware number. If that happens
-				# we wait until the actual number comes
-				connected = 4
+				connected = 4					# Set that this stage is complete
 				call attributes_write( xgatt_data, 0, 16, "NETWORK PRESENT\n" )	
 			else
 				# Write nothing (to flush the buffer) and try again
 				call attributes_write( xgatt_data, 0, 11, "NO NETWORK\n" )
-				connected = 3
+				connected = 3					# Set that this stage in not complete
 			end if
 		end if
 	
 		# Check for the GPRS network
 		if connected = 4 then 
-		
 			# Disable RX watermarks
 			call system_endpoint_set_watermarks( 5, 0, $ff )
 
@@ -328,17 +300,17 @@ event hardware_soft_timer( handle )
 			end while 
 			
 			# Check that the hardware number is not invalid
+    		# Sometimes the Telit responds with a blank message
+    		# and then 'OK'. If this happens then it gets ignored 
+    		# and another attempt is made on the next interrupt
 			if memcmp( in( 8 ), netok( 0 ), 3 ) = 1 then
-				# Sometimes the telit responds with a blank message 
-				# then OK and then the hardware number. If that happens
-				# we wait until the actual number comes
-				connected = 5
+				connected = 5					# Set that this stage is complete
 				call attributes_write( xgatt_data, 0, 20, "GPS NETWORK PRESENT\n" )	
 				in_len = 0
 			else
 				# Write nothing (to flush the buffer) and try again
 				call attributes_write( xgatt_data, 0, 15, "NO GPS NETWORK\n" )
-				connected = 4
+				connected = 4					# Set that this stage is not complete
 			end if
 		end if 
 	end if
@@ -365,70 +337,67 @@ event attributes_value( connection, reason, handle, offset, value_len, value_dat
 		out_len = value_len
 
 		# Enable TX watermarks so that the data can be sent over UART
-	#	call system_endpoint_set_watermarks( 5, $ff, out_len )
+	    # call system_endpoint_set_watermarks( 5, $ff, out_len )
 	end if
 	
 	# If the user entered a number
-	if connected = 8 then 
-
-		call attributes_user_write_response( 0, 0 )	
-	
+	if connected = 8 then 	
+        # Disable RX watermarks
 		call system_endpoint_set_watermarks( 5, 0, $ff )
 
 		# Send command to Telit telling it we want to use strings
 		call system_endpoint_tx( 5, 10, "AT+CMGF=1\r" )
-	
+	 
+        # Enable RX watermarks to get the Telit's response
 		call system_endpoint_set_watermarks( 5, 1, $ff )
 			
-		# Create the sms command for the Telit	
+		# Define the string values of " and CTRL-Z
+        # using their hex values
 		icomma( 0 : 1 ) = $22
 		ctrlz( 0 : 1 ) = $1a
 
+        # Copy the cell number into the SMS command
 		memcpy( sms_comm( 9 ), cell( 0 ), cell_len ) 
 
-		# Add in the quotes 
+		# Add in the quotes (" character) around 
+        # the cellphone number
 		memcpy( sms_comm( 8  ), icomma( 0 ), 1 )			
 		memcpy( sms_comm( 19 ), icomma( 0 ), 1 )
 
+        # Disable RX watermarks
 		call system_endpoint_set_watermarks( 5, 0 , $ff )
 		
+        # Send the SMS command followed by the return carriage
 		call system_endpoint_tx( 5, 20, sms_comm( 0 : 20 ) )
 		call system_endpoint_tx( 5, 1, "\r" )
- 
-		if out( 0 : 1 ) < 5 then 
+
+		# Write a response to the device to
+		# acknowledge the message  
+		call attributes_user_write_response( 0, 0 )	
+
+        # Check what the users response to the 
+        # 1 - 10 number prompt was
+		if out( 0 : 1 ) < $35 then 
 			# Set the sms buffer
-			sms( 0 : 12 ) = "Less than 5!"
-			sms( 12 : 13 ) = $1a				# Crtl-z to send sms
-			
-			call attributes_write( xgatt_data, 0, 13, sms( 0 : 13 ) )
-
-			# Send a message to the telit that it will send as an sms
-			call system_endpoint_tx( 5, 13, sms( 0 : 13 ) )
+			sms( 0 : 12 ) = "Less than 5!"		
+	
+			# Set that the sms buffer has been set
+			connected = 9
 		else
-			call system_endpoint_set_watermarks( 5, 1, $ff )
-			while in_len = 0
-			end while
-			call system_endpoint_set_watermarks( 5, 0 , $ff )
-
 			# Set the sms buffer
 			sms( 0 : 12 ) = "More than 5!"
-			sms( 12 : 13 ) = $1a
-
-			# Send a message to the telit that it will send as an sms
-			call system_endpoint_tx( 5, 13, sms( 0 : 13 ) )	
-			call system_endpoint_tx( 5, 1, $1a )
-		
-			#call system_endpoint_set_watermarks( 5, 1, $ff )
+			
+			# Set that the sms buffer has been set			
+			connected = 9
 		end if	
 	end if
 
-	# If we have just asked for the cell number 
+	# If the cell number has been asked for
 	if connected = 6 then
- 
 		# Store the cell number
 		memcpy( cell( 0 ), out( 0 ), out_len )
 
-		# Copy cell length
+		# Set the cell buffer length
 		cell_len = out_len 
 
 		# Tell the user that the number is saved
@@ -454,7 +423,7 @@ event system_endpoint_watermark_tx( endpoint, size )
 
 		# Write a response to the device on the other side 
 		# of the bluetooth connection (iOS or android device)
-		if connected = 8 
+		if connected = 11 
 		    call attributes_user_write_response( 0, 0 )
         end if 
 
@@ -469,7 +438,7 @@ end
 event attributes_status( handle, flags )
 	if handle = xgatt_data then
 		if flags & 2 then
-            if connected = 8 then
+            if connected = 11 then
 			    # If the indicators are enabled :
 			    # Set the RX watermark to trigger when 1 byte is received
 			    call system_endpoint_set_watermarks( 5, 1, $ff )
@@ -503,7 +472,7 @@ event system_endpoint_watermark_rx( endpoint, size )
 
 		# Write the result to the device on the other side of the bluetooth
 		# connection, if there is an established connection with the telit
-		if connected = 8 
+		if connected = 11 
 		    call attributes_write( xgatt_data, 0, in_len, in( 0 : in_len ) )
         end if
 	end if
