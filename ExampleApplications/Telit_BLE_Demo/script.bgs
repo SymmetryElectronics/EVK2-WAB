@@ -314,15 +314,6 @@ event hardware_soft_timer( handle )
 	end if
 end 
 
-# Executed when the connection is lost 
-event connection_disconnected( connection, reason )
-	# Disable all watermarks
-	call system_endpoint_set_watermarks( 5, 0, 0 )
-
-	# Set the device to advertise so that a connection can be re-established
-	call gap_set_mode( gap_general_discoverable, gap_undirected_connectable )
-end 
-
 # Executed when there is incoming data from a bluetooth connection
 event attributes_value( connection, reason, handle, offset, value_len, value_data )
 		
@@ -399,6 +390,16 @@ event attributes_value( connection, reason, handle, offset, value_len, value_dat
 	end if 
 end
 
+
+# Executed when the connection is lost 
+event connection_disconnected( connection, reason )
+	# Disable all watermarks
+	call system_endpoint_set_watermarks( 5, 0, 0 )
+
+	# Set the device to advertise so that a connection can be re-established
+	call gap_set_mode( gap_general_discoverable, gap_undirected_connectable )
+end 
+
 # Executed when data must be sent over UART
 event system_endpoint_watermark_tx( endpoint, size )
 	# Check that the endpoint is for UART
@@ -414,25 +415,6 @@ event system_endpoint_watermark_tx( endpoint, size )
 
 		# Reset the length of the output data to 0
 		out_len = 0
-	end if
-end
-
-# Executed when the device on the other side of the bluetooth connection 
-# changes its Client Characteristic Configuration value changes (the 
-# device on the other side should do this by itself)
-event attributes_status( handle, flags )
-	if handle = xgatt_data then
-		if flags & 2 then
-            if connected = 11 then
-			    # If the indicators are enabled :
-			    # Set the RX watermark to trigger when 1 byte is received
-			    call system_endpoint_set_watermarks( 5, 1, $ff )
-            end if
-		else 
-			# If the indicators are disabled :
-			# Disable the RX watermarks
-			call system_endpoint_set_watermarks( 5, 0, $ff )
-		end if
 	end if
 end
 
@@ -460,6 +442,25 @@ event system_endpoint_watermark_rx( endpoint, size )
 		if connected = 11 
 		    call attributes_write( xgatt_data, 0, in_len, in( 0 : in_len ) )
         end if
+	end if
+end
+
+# Executed when the device on the other side of the bluetooth connection 
+# changes its Client Characteristic Configuration value changes (the 
+# device on the other side should do this by itself)
+event attributes_status( handle, flags )
+	if handle = xgatt_data then
+		if flags & 2 then
+            if connected = 11 then
+			    # If the indicators are enabled :
+			    # Set the RX watermark to trigger when 1 byte is received
+			    call system_endpoint_set_watermarks( 5, 1, $ff )
+            end if
+		else 
+			# If the indicators are disabled :
+			# Disable the RX watermarks
+			call system_endpoint_set_watermarks( 5, 0, $ff )
+		end if
 	end if
 end
 
