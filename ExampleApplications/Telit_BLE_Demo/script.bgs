@@ -364,7 +364,7 @@ event attributes_value( connection, reason, handle, offset, value_len, value_dat
 		call system_endpoint_tx( 5, 1, "\r" )
 
         # Check what the users response to the 
-        # 1 - 10 number prompt was
+        # 0 - 9 number prompt was
 		if out( 0 : 1 ) < $35 then 
 			# Set the sms buffer
 			sms( 0 : 12 ) = "Less than 5!"		
