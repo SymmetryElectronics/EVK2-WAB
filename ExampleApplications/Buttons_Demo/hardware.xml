@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+
+<hardware>
+    <sleeposc enable="true" ppm="30" />
+    <usb enable="false" endpoint="api" />
+    <txpower power="15" bias="5" />
+	<usart channel="1" alternate="1" baud="115200" endpoint="none" />
+	<script enable="true" />	
+	<port index="0" pull="down" />
+	<pmux regulator_pin="7" />
+</hardware>
