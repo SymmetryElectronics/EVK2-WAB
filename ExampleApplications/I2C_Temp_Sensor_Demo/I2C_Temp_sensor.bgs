@@ -1,0 +1,92 @@
+# ================================================================
+# I2C Temp sensor
+#
+# This example reads the temperature from the MCP9801 sensor using
+# I2C. The temperature in Celsius is displayed via UART at 115200 
+# baud. It is also displays the temperature over Bluetooth 4.0 
+# using the HTM (Health Thermometer Monitor) profile.
+# ================================================================
+
+dim connected           # connection status
+dim ret_written         # number of bytes written from I2C write call
+dim ret_result          # result code from I2C read call
+dim ret_data_len        # length from I2C read call
+dim ret_data_data(2)    # read measurement data from I2C read call
+dim data1
+dim data2
+dim string(8)
+dim a
+dim b
+dim c
+dim d
+dim addr(6)
+dim tmp(5)
+
+event system_boot(major, minor, patch, build, ll_version, protocol, hw)
+    # initialize connection status as DISCONNECTED
+	
+	#Get local BT address
+	call system_address_get( )(addr(0:6))
+	
+	# Write BT address to DI service serial number string
+	call attributes_write(xgatt_dis_2a25,0,6,addr(0:5))
+
+	#Set device to advertisement mode and allow undirected connections
+	call gap_set_mode(gap_general_discoverable,gap_undirected_connectable)
+	#Allow pairing
+	call sm_set_bondable_mode(1)
+	
+	#set timer to periodically create an interrupt with interval of 1s
+	call hardware_set_soft_timer(32768,0,0)
+
+    # DEBUG UART OUTPUT: welcome message
+    call system_endpoint_tx(system_endpoint_uart1, 27, "\r\n=======================\r\n")
+    call system_endpoint_tx(system_endpoint_uart1, 28, "I2C Temperature test ready\r\n")	
+end
+
+# catch timer tick, once per second
+event hardware_soft_timer(handle)
+        # Set up the temp sensor to 12 bit resolution
+		call hardware_i2c_write($90, 1, 2, "\x01\x60")(ret_written)
+		
+		# Read Temperature
+		call hardware_i2c_write($90, 1, 1, "\x00")(ret_written)
+        call hardware_i2c_read($90, 1, 2)(ret_result, ret_data_len, ret_data_data(0:ret_data_len))
+ 
+		# Convert Temp to integer*10
+		data1 = ret_data_data(0:1)*100
+		data2 = (ret_data_data(1:1)>>4)*100/16
+
+		data1 = data1 + data2
+		
+		#set as float
+		tmp(1:4)=float(data1, -2)
+		
+		#write the temperature information to the GATT database
+		call attributes_write(xgatt_htm_2a1c,0,5,tmp(0:5))
+		
+		#Extract decimals from integer*100 format		#24.86 (example)
+		a = (data1 / 1000)								#2X.X
+		b = (data1 / 100) - (a*10)						#X4.X
+		c = (data1 / 10)  - (a*100) - (b*10)			#XX.8
+		d = (data1)		  - (a*1000)- (b*100) - c*10	#XX.X6
+		
+		# Convert to ASCII for display via UART
+		string(0:1) = a + 48
+		string(1:1) = b + 48
+		string(2:1) = "."
+		string(3:1) = c + 48
+		string(4:1) = d + 48
+		string(5:1) = " "
+		string(6:1) = 248		# degree symbol
+		string(7:1) = "C"
+		
+		call system_endpoint_tx(system_endpoint_uart1, 6, "Temp: ")
+		call system_endpoint_tx(system_endpoint_uart1, 8, string(0:8))
+		call system_endpoint_tx(system_endpoint_uart1, 4, "\r\n\r\n")
+end
+
+event connection_disconnected(handle,result)
+	#in case if disconnect, return to advertisement mode
+    call gap_set_mode(gap_general_discoverable,gap_undirected_connectable)
+end

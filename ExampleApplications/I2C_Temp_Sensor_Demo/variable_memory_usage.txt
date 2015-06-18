@@ -1,4 +1,4 @@
-24
+61
 0:0	GAP_AD_FLAG_BREDR_NOT_SUPPORTED
 0:0	GAP_AD_FLAG_GENERAL_DISCOVERABLE
 0:0	GAP_AD_FLAG_LIMITED_DISCOVERABLE
@@ -76,9 +76,19 @@
 0:0	system_endpoint_uart0
 0:0	system_endpoint_uart1
 0:0	system_endpoint_usb
-0:4	voltage
-4:4	thousands
-8:4	hundreds
-12:4	tens
-16:4	ones
-20:4	result
+0:0	xgatt_dis_2a25
+0:0	xgatt_htm_2a1c
+0:4	connected
+4:4	ret_written
+8:4	ret_result
+12:4	ret_data_len
+16:2	ret_data_data
+18:4	data1
+22:4	data2
+26:8	string
+34:4	a
+38:4	b
+42:4	c
+46:4	d
+50:6	addr
+56:5	tmp
