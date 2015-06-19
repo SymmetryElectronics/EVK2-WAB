@@ -71,11 +71,6 @@ event hardware_soft_timer(handle)
 		# Arg 1 : Input      : Using analog input 6 
 		# Arg 2 : Decimation : 3 (12 Bit resolution)
 		# Arg 3 : Reference  : 0 (1.24V internal reference) 
-		#
-		# note : result will be 16 bits stored in msb and must be shifted 
-		#        to be on the range [-2048, 2048].
-		#        this must then be converted to the range [0, 100] to display
-		#        the percentage of the potentiometer
 		call hardware_adc_read(6, 3, 0)
 	end if 	
 end
@@ -86,8 +81,7 @@ event hardware_adc_result(input, value)
 	# The result will be 16 bits stored left aligned and must be shifted 
 	# to the right by 4 bits to be on the range [-2048, 2048].
 	# 
-	# This must then be converted to the range [0, 100] to display
-	# the percentage of the potentiometer
+	# This must then be converted to the range [0, 4096] for display
 	voltage =  ( value >> 4 ) + 2048 
 
 	# If thousands are less than 100, make thousands 0
@@ -95,7 +89,6 @@ event hardware_adc_result(input, value)
 		thousands = 0
 	else 
 		thousands = voltage / 1000 
- 
 	end if 	
 
 	# Get decimals from 0 - 4096 format
