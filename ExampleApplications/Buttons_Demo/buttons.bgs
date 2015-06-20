@@ -50,13 +50,14 @@ event hardware_io_port_status(delta, port, irq, state)
 
 	# Check that PORT 0 caused the interrupt
 	if port = 0 then 
-		# Write a message
+		# Set message buffer to message value
 		message( 0 : 16 ) = "BUTTON PRESSED\n\r"
-
+	else 
+		# Set message buffer to empty
+		message( 0 : 16 ) = "                "
 	end if 
 
 	# Send the message over uart (uart 1 as per hardware settings)
 	call system_endpoint_tx( 5, 16, message( 0 : 16 ) )
-
 end
 
