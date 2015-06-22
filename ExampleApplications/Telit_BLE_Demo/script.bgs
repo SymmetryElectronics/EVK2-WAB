@@ -11,22 +11,23 @@
 #																												 #
 # Wiki Page	    	: Step by step explanation of the code can be found at :									 #
 #																												 #
-#                 	  https://github.com/X-Intellect/EVK2-WAB/wiki/Telit-----BLE-Communication-Example			 #
+#                 	  https://github.com/SymmetryElectronics/EVK2-WAB/wiki/Telit-BLE-Communication-Example		 #
 #																												 #
-#                     Additionally, for other examples for the 													 #
-#                     EVK2 WAB board, see the Wiki page at:														 #									
+#                     Additionally, for other examples for the EVK2 WAB board, see the Wiki page at:		     #									
 #																												 #
-#                     https://github.com/X-Intellect/EVK2-WAB/wiki/EVK2-WAB-Example-Applications				 #
+#                     https://github.com/SymmetryElectronics/EVK2-WAB/wiki/EVK2-WAB-Example-Applications		 #
 #																												 #
 #                     Or find the latest version of the source code at :										 #
 #																												 #
-#                     https://github.com/X-Intellect/EVK2-WAB/tree/master/ExampleApplications/Telit_BLE_Demo	 #
+#                     https://github.com/SymmetryElectronics/EVK2-WAB/tree/master/ExampleApplications/Telit_BLE_Demo
 #																												 #
 # ============================================================================================================== #
 #                                                 CHANGELOG:													 #
 # ============================================================================================================== #
 #   																											 #
 # 2015-06-06        : Initial release																			 #
+#                                                                                                                #
+# 2015-06-23        : Added functionality for sending an sms based on the RSSI connection strength               #
 #																												 #
 # ============================================================================================================== #
 
@@ -47,6 +48,9 @@ dim hn(13)          # Hardware number buffer
 dim sn(17)	        # Software number buffer
 dim cgsn(6)         # Command to query the Telit for it's information
 dim connected       # State the program is in, to determine if the Telit can be connected to
+dim use_rssi        # If the sms must be sent using RSI or user input
+dim conn_handle     # 'Dummy' connection handle used for getting the RSII value
+dim rssi            # Value of RSSI 
 
 # ============================================================================================================== #
 #                                            GENERAL PROCEDURES                                                  #
@@ -108,6 +112,9 @@ event system_boot( major, minor, patch, build, ll_version, protocol, hw )
 
 	# Set the connected state to represent no checks completed
     connected = 0
+
+    # Set that the RSSI value must be used to determine if an sms must be sent
+    use_rssi = 1
 end
 
 # Executed when the timer interrupt is triggered
@@ -137,8 +144,24 @@ event hardware_soft_timer( handle )
 		# Once the cellphone number has been stored 
 		# prompt the user to enter a number
         if connected = 7 then
-            connected = 8				# Set that this part is completd
-			call attributes_write( xgatt_data, 0, 18, "ENTER NUM (0-9):\n" )	
+            if use_rssi = 1 then 
+                # Check the strength of the Bluetooth signal 
+                call connection_get_rssi( 0 )( conn_handle, rssi )
+
+                # Check if RSSI > -50dB
+                if rssi > 205 then 
+                    # A message can be sent 
+                    connected = 8
+                    call attributes_write( xgatt_data, 0, 20, "IN RANGE, SEND 'OK'\n" )
+                else
+                    # A message cannot be sent
+                    call attributes_write( xgatt_data, 0, 13, "OUT OF RANGE\n" )
+                end if 
+            else 
+                # Using the user input for the message sending
+                connected = 8				# Set that this part is completd
+			    call attributes_write( xgatt_data, 0, 18, "ENTER NUM (0-9):\n" )	
+            end if
         end if 
 
 		# Network and GPRS are present so
@@ -333,6 +356,7 @@ event attributes_value( connection, reason, handle, offset, value_len, value_dat
 	
 	# If the user entered a number
 	if connected = 8 then 	
+
         # Disable RX watermarks
 		call system_endpoint_set_watermarks( 5, 0, $ff )
 
@@ -354,21 +378,30 @@ event attributes_value( connection, reason, handle, offset, value_len, value_dat
 		call system_endpoint_tx( 5, 20, sms_comm( 0 : 20 ) )
 		call system_endpoint_tx( 5, 1, "\r" )
 
-        # Check what the users response to the 
-        # 0 - 9 number prompt was
-		if out( 0 : 1 ) < $35 then 
-			# Set the sms buffer
-			sms( 0 : 12 ) = "Less than 5!"		
+        # If the RSSI value is being used 
+        if use_rssi = 1 then  	
+            # Set sms buffer 
+            sms( 0 : 12 ) = "From Telit!!"
+ 
+            # Set that the sms buffer has been set
+            connected = 9
+        else
+            # Check what the users response to the 
+            # 0 - 9 number prompt was
+		    if out( 0 : 1 ) < $35 then 
+			    # Set the sms buffer
+			    sms( 0 : 12 ) = "Less than 5!"		
 	
-			# Set that the sms buffer has been set
-			connected = 9
-		else
-			# Set the sms buffer
-			sms( 0 : 12 ) = "More than 5!"
-			
-			# Set that the sms buffer has been set			
-			connected = 9
-		end if	
+			    # Set that the sms buffer has been set
+			    connected = 9
+			else
+				# Set the sms buffer
+				sms( 0 : 12 ) = "More than 5!"
+				
+				# Set that the sms buffer has been set			
+				connected = 9
+			end if
+        end if
 	end if
 
 	# If the cell number has been asked for
