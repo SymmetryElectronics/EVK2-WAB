@@ -50,7 +50,11 @@ dim cgsn(6)         # Command to query the Telit for it's information
 dim connected       # State the program is in, to determine if the Telit can be connected to
 dim use_rssi        # If the sms must be sent using RSI or user input
 dim conn_handle     # 'Dummy' connection handle used for getting the RSII value
-dim rssi            # Value of RSSI 
+dim rssi            # Value of RSSI connection
+dim rssi_input      # ASCII RSSI input from user
+dim rssi_value      # integer RSSI input from user
+dim temp_tens       # Temp var for RSSI tens component
+dim temp_oens       # Temp var for RSSI ones component
 
 # ============================================================================================================== #
 #                                            GENERAL PROCEDURES                                                  #
@@ -78,6 +82,60 @@ procedure check_telit_interface()
 	connected = 1
 end
 
+# Procedure for setting up the SMS message 
+procedure setup_sms()
+
+    # Disable RX watermarks
+	call system_endpoint_set_watermarks( 5, 0, $ff )
+
+	# Send command to Telit telling it we want to use strings
+	call system_endpoint_tx( 5, 10, "AT+CMGF=1\r" )
+	 
+	# Define the string value of " 
+	icomma( 0 : 1 ) = $22
+
+    # Copy the cell number into the SMS command
+	memcpy( sms_comm( 9 ), cell( 0 ), cell_len ) 
+
+	# Add in the quotes (" character) around 
+    # the cellphone number
+	memcpy( sms_comm( 8  ), icomma( 0 ), 1 )			
+	memcpy( sms_comm( 19 ), icomma( 0 ), 1 )
+		
+    # Send the SMS command followed by the return carriage
+	call system_endpoint_tx( 5, 20, sms_comm( 0 : 20 ) )
+	call system_endpoint_tx( 5, 1, "\r" )
+end 
+
+# Tells the Telit module to send an SMS
+procedure send_sms()
+
+	call system_endpoint_set_watermarks( 5, 0, $ff )
+			
+	# Send the sms and the CTRL-Z character to the Telit 
+	call system_endpoint_tx( 5, 12, sms( 0 : 12 ) )	
+	call system_endpoint_tx( 5, 1, "\x1a" )	
+
+	# Tell the user that the message has sent
+	call attributes_write( xgatt_data, 0, 9, "SMS SENT\n" )
+end
+
+# Converts a 3 byte ASCII value to an int
+# Value to convert is rssi_input
+procedure convert_rssi()
+	
+	# Convert tens component to int
+	temp_tens = rssi_input( 0 : 1 ) - 48
+    
+    # Convert ones component to int
+    temp_ones = rssi_input( 1 : 1 ) - 48
+
+	# Add the values together
+	rssi_value = ( temp_tens * 10 ) + temp_ones
+
+	# Make value negative
+	rssi_value = rssi_value * ( -1 ) 
+end 
 # ============================================================================================================== #
 #                                              MAIN FUNCTIONALITY                                                #
 # ============================================================================================================== #
@@ -125,38 +183,43 @@ event hardware_soft_timer( handle )
 
 		# If the prompt for the sms message is open on the Telit
 		if connected = 9 then
-			# Disable the RX watermark
-			call system_endpoint_set_watermarks( 5, 0, $ff )
-			
-			# Send the sms and the CTRL-Z character to the Telit 
-			call system_endpoint_tx( 5, 12, sms( 0 : 12 ) )	
-			call system_endpoint_tx( 5, 1, "\x1a" )	
+			if use_rssi = 1 then 
+				# Get the rssi strength
+				call connection_get_rssi( 0 )( conn_handle, rssi ) 
+				
+				# Check rssi strength against user defined value
+				if rssi < rssi_value then 
+					# Send the SMS 
+					call send_sms()
 
-			# Tell the user that the message has sent
-			call attributes_write( xgatt_data, 0, 9, "SMS SENT\n" )
-			
-			# Set that the sms has been sent
-			# NOTE : If you want to be able to constantly send messges to the Telit 
-			#		 module after the example is finished, set connected = 11 here
-			connected = 10	
+					# Set that the sms has been sent
+					# NOTE : If you want to be able to constantly send messges to the Telit 
+					#		 module after the example is finished, set connected = 11 here
+					connected = 10
+				else 
+					# Send user an information messgae
+					call attributes_write( xgatt_data, 0, 18, "TOO CLOSE FOR SMS\n"	)
+				end if 
+			else 
+				# Using user input condition, just send sms
+				send_sms()
+				
+				# Set that the sms has been sent
+				# NOTE : If you want to be able to constantly send messges to the Telit 
+				#		 module after the example is finished, set connected = 11 here
+				connected = 10	
+			end if
 		end if 
 
 		# Once the cellphone number has been stored 
 		# prompt the user to enter a number
         if connected = 7 then
-            if use_rssi = 1 then 
-                # Check the strength of the Bluetooth signal 
-                call connection_get_rssi( 0 )( conn_handle, rssi )
-
-                # Check if RSSI > -50dB
-                if rssi > 205 then 
-                    # A message can be sent 
-                    connected = 8
-                    call attributes_write( xgatt_data, 0, 20, "IN RANGE, SEND 'OK'\n" )
-                else
-                    # A message cannot be sent
-                    call attributes_write( xgatt_data, 0, 13, "OUT OF RANGE\n" )
-                end if 
+            if use_rssi = 1 then  
+                # Ask for RSSI value
+                call attributes_write( xgatt_data, 0, 18, "CHOOSE RSSI VALUE\n"  )
+				call attributes_write( xgatt_data, 0, 19, "BETWEEN 50 AND 100\n" )
+				call attributes_write( xgatt_data, 0, 17, "HIGHER = FURTHER\n"   )
+				connected = 8
             else 
                 # Using the user input for the message sending
                 connected = 8				# Set that this part is completd
@@ -357,32 +420,20 @@ event attributes_value( connection, reason, handle, offset, value_len, value_dat
 	# If the user entered a number
 	if connected = 8 then 	
 
-        # Disable RX watermarks
-		call system_endpoint_set_watermarks( 5, 0, $ff )
-
-		# Send command to Telit telling it we want to use strings
-		call system_endpoint_tx( 5, 10, "AT+CMGF=1\r" )
-	 
-		# Define the string value of " 
-		icomma( 0 : 1 ) = $22
-
-        # Copy the cell number into the SMS command
-		memcpy( sms_comm( 9 ), cell( 0 ), cell_len ) 
-
-		# Add in the quotes (" character) around 
-        # the cellphone number
-		memcpy( sms_comm( 8  ), icomma( 0 ), 1 )			
-		memcpy( sms_comm( 19 ), icomma( 0 ), 1 )
-		
-        # Send the SMS command followed by the return carriage
-		call system_endpoint_tx( 5, 20, sms_comm( 0 : 20 ) )
-		call system_endpoint_tx( 5, 1, "\r" )
+		# Setup the sms message
+		call setup_sms()
 
         # If the RSSI value is being used 
         if use_rssi = 1 then  	
-            # Set sms buffer 
-            sms( 0 : 12 ) = "From Telit!!"
+			# Get the RSSI input from the user
+			memcpy( rssi_input( 0 ), out( 0 ), out_len )
+		
+			# Convert the ascii rssi_input to an int
+			call rssi_convert()
  
+			# Set the sms buffer
+			sms( 0 : 12 ) = "Out of range"
+
             # Set that the sms buffer has been set
             connected = 9
         else
