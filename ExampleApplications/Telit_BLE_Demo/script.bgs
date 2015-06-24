@@ -51,10 +51,10 @@ dim connected       # State the program is in, to determine if the Telit can be 
 dim use_rssi        # If the sms must be sent using RSI or user input
 dim conn_handle     # 'Dummy' connection handle used for getting the RSII value
 dim rssi            # Value of RSSI connection
-dim rssi_input      # ASCII RSSI input from user
+dim rssi_input(2)   # ASCII RSSI input from user
 dim rssi_value      # integer RSSI input from user
 dim temp_tens       # Temp var for RSSI tens component
-dim temp_oens       # Temp var for RSSI ones component
+dim temp_ones       # Temp var for RSSI ones component
 
 # ============================================================================================================== #
 #                                            GENERAL PROCEDURES                                                  #
@@ -122,7 +122,7 @@ end
 
 # Converts a 3 byte ASCII value to an int
 # Value to convert is rssi_input
-procedure convert_rssi()
+procedure rssi_convert()
 	
 	# Convert tens component to int
 	temp_tens = rssi_input( 0 : 1 ) - 48
@@ -133,8 +133,8 @@ procedure convert_rssi()
 	# Add the values together
 	rssi_value = ( temp_tens * 10 ) + temp_ones
 
-	# Make value negative
-	rssi_value = rssi_value * ( -1 ) 
+	# Incorporate negative of RSSI and two's complement
+	rssi_value = 256 - rssi_value  
 end 
 # ============================================================================================================== #
 #                                              MAIN FUNCTIONALITY                                                #
@@ -189,7 +189,7 @@ event hardware_soft_timer( handle )
 				
 				# Check rssi strength against user defined value
 				if rssi < rssi_value then 
-					# Send the SMS 
+					# Out of range, so send the SMS 
 					call send_sms()
 
 					# Set that the sms has been sent
@@ -198,11 +198,11 @@ event hardware_soft_timer( handle )
 					connected = 10
 				else 
 					# Send user an information messgae
-					call attributes_write( xgatt_data, 0, 18, "TOO CLOSE FOR SMS\n"	)
+					call attributes_write( xgatt_data, 0, 18, "TOO CLOSE FOR SMS\n" )
 				end if 
 			else 
 				# Using user input condition, just send sms
-				send_sms()
+				call send_sms()
 				
 				# Set that the sms has been sent
 				# NOTE : If you want to be able to constantly send messges to the Telit 
@@ -216,9 +216,7 @@ event hardware_soft_timer( handle )
         if connected = 7 then
             if use_rssi = 1 then  
                 # Ask for RSSI value
-                call attributes_write( xgatt_data, 0, 18, "CHOOSE RSSI VALUE\n"  )
-				call attributes_write( xgatt_data, 0, 19, "BETWEEN 50 AND 100\n" )
-				call attributes_write( xgatt_data, 0, 17, "HIGHER = FURTHER\n"   )
+                call attributes_write( xgatt_data, 0, 18, "CHOOSE RSSI VALUE\n" )
 				connected = 8
             else 
                 # Using the user input for the message sending
@@ -559,5 +557,3 @@ event attclient_indicated( connection, attrhandle )
 		in_len = 0
 	end if
 end
- 
-
