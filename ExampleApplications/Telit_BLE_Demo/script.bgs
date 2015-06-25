@@ -216,7 +216,7 @@ event hardware_soft_timer( handle )
         if connected = 7 then
             if use_rssi = 1 then  
                 # Ask for RSSI value
-                call attributes_write( xgatt_data, 0, 18, "CHOOSE RSSI VALUE\n" )
+                call attributes_write( xgatt_data, 0, 20, "SET RSSI VAL(40-90)\n" )
 				connected = 8
             else 
                 # Using the user input for the message sending
