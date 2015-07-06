@@ -55,7 +55,10 @@ dim rssi_input(2)   # ASCII RSSI input from user
 dim rssi_value      # integer RSSI input from user
 dim temp_tens       # Temp var for RSSI tens component
 dim temp_ones       # Temp var for RSSI ones component
-
+dim rssi_tens
+dim rssi_ones
+dim rssi_temp
+dim rssi_display(4)
 # ============================================================================================================== #
 #                                            GENERAL PROCEDURES                                                  #
 # ============================================================================================================== #
@@ -136,6 +139,7 @@ procedure rssi_convert()
 	# Incorporate negative of RSSI and two's complement
 	rssi_value = 256 - rssi_value  
 end 
+
 # ============================================================================================================== #
 #                                              MAIN FUNCTIONALITY                                                #
 # ============================================================================================================== #
@@ -153,8 +157,8 @@ event system_boot( major, minor, patch, build, ll_version, protocol, hw )
     at( 0 : 2  ) 	   = "AT"					# Set the at buffer to the value at
     ok( 0 : 2  ) 	   = "OK"					# Set the ok buffer to the value ok	
 	netok( 0 : 3  )    = "0,1"					# Set the netok buffer to the correct response for the network
-	hn( 0 : 13 ) 	   = "H NUM:      \n"      	# Set the hardware number buffer, will fill in the blanks later
-	sn( 0 : 17 ) 	   = "S NUM:          \n"  	# Set the software number buffer, will fill in the blanks later
+	hn( 0 : 13 ) 	   = "HW:         \n"      	# Set the hardware number buffer, will fill in the blanks later
+	sn( 0 : 17 ) 	   = "SW:             \n"  	# Set the software number buffer, will fill in the blanks later
 	sms_comm( 0 : 20 ) = "AT+CMGS=            "	# Set the sms command buffer, will fill in the blanks later
 
 	# Set a repeatable timer for every +- 1 second which will be used to 
@@ -166,7 +170,7 @@ event system_boot( major, minor, patch, build, ll_version, protocol, hw )
 	# Arg2 : The handle of the timer
 	# Arg3 : Repeated. We set this to 0 since the timer must continually
 	#        interrupt, in case there was no connection on the previous attempts
-    call hardware_set_soft_timer( 32768, 1, 0 )
+    call hardware_set_soft_timer( 18760, 1, 0 )
 
 	# Set the connected state to represent no checks completed
     connected = 0
@@ -197,8 +201,22 @@ event hardware_soft_timer( handle )
 					#		 module after the example is finished, set connected = 11 here
 					connected = 10
 				else 
+                    # Display the RSSI value (which is twos complement)
+                    # Convert from 'hex' to something a person will understand
+                    rssi_temp = -1 * ( rssi - 256 )          # 'Hex' to decimal, and swap sign
+                    
+                    # Extract the decimals 
+                    rssi_tens = ( rssi_temp / 10 )
+                    rssi_ones = rssi_temp - ( 10 * rssi_tens )
+
+                    # Convert to ASCII for display, add a negative
+                    rssi_display( 0 : 1 ) = "-"
+                    rssi_display( 1 : 1 ) = rssi_tens + 48
+                    rssi_display( 2 : 1 ) = rssi_ones + 48
+                    rssi_display( 3 : 1 ) = "\n"
+
 					# Send user an information messgae
-					call attributes_write( xgatt_data, 0, 18, "TOO CLOSE FOR SMS\n" )
+					call attributes_write( xgatt_data, 0, 4, rssi_display( 0 : 4 ) )
 				end if 
 			else 
 				# Using user input condition, just send sms
@@ -357,44 +375,14 @@ event hardware_soft_timer( handle )
     		# and then 'OK'. If this happens then it gets ignored 
     		# and another attempt is made on the next interrupt
 			if memcmp( in( 7 ), netok( 0 ), 3 ) = 1 then
-				connected = 4					# Set that this stage is complete
+				connected = 5					# Set that this stage is complete
 				call attributes_write( xgatt_data, 0, 16, "NETWORK PRESENT\n" )	
 			else
 				# Write nothing (to flush the buffer) and try again
-				call attributes_write( xgatt_data, 0, 11, "NO NETWORK\n" )
+				call attributes_write( xgatt_data, 0, 17, "CHECKING NETWORK\n" )
 				connected = 3					# Set that this stage in not complete
 			end if
-		end if
-	
-		# Check for the GPRS network
-		if connected = 4 then 
-			# Disable RX watermarks
-			call system_endpoint_set_watermarks( 5, 0, $ff )
-
-			# Send command for the software number
-			call system_endpoint_tx( 5, 10, "AT+CGREG?\r" )
-    
-			# Enable the RX watermarks to get the response
-			call system_endpoint_set_watermarks( 5, 1, $ff )
-
-			# Wait for a response
-			while in_len = 0
-			end while 
-			
-			# Check that the hardware number is not invalid
-    		# Sometimes the Telit responds with a blank message
-    		# and then 'OK'. If this happens then it gets ignored 
-    		# and another attempt is made on the next interrupt
-			if memcmp( in( 8 ), netok( 0 ), 3 ) = 1 then
-				connected = 5					# Set that this stage is complete
-				call attributes_write( xgatt_data, 0, 20, "GPS NETWORK PRESENT\n" )	
-				in_len = 0
-			else
-				# Write nothing (to flush the buffer) and try again
-				call attributes_write( xgatt_data, 0, 15, "NO GPS NETWORK\n" )
-				connected = 4					# Set that this stage is not complete
-			end if
-		end if 
+		end if	
 	end if
 end 
 

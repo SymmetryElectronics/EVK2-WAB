@@ -1,4 +1,4 @@
-183
+199
 0:0	GAP_AD_FLAG_BREDR_NOT_SUPPORTED
 0:0	GAP_AD_FLAG_GENERAL_DISCOVERABLE
 0:0	GAP_AD_FLAG_LIMITED_DISCOVERABLE
@@ -101,3 +101,7 @@
 171:4	rssi_value
 175:4	temp_tens
 179:4	temp_ones
+183:4	rssi_tens
+187:4	rssi_ones
+191:4	rssi_temp
+195:4	rssi_display
