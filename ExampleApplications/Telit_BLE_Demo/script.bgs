@@ -43,11 +43,13 @@ dim sms(13)         # SMS message buffer
 dim result          # Endpoint RX error code
 dim at(2)           # AT command for Telit
 dim ok(2)           # OK response from Telit
+dim start(5)        # Start message for starting the process
 dim netok(3)        # Telit response if network is present
 dim hn(13)          # Hardware number buffer
 dim sn(17)          # Software number buffer
 dim cgsn(6)         # Command to query the Telit for it's information
 dim connected       # State the program is in, to determine if the Telit can be connected to
+dim sent_start      # If the start message has been sent
 dim use_rssi        # If the sms must be sent using RSI or user input
 dim conn_handle     # 'Dummy' connection handle used for getting the RSII value
 dim rssi            # Value of RSSI connection
@@ -156,24 +158,33 @@ event system_boot( major, minor, patch, build, ll_version, protocol, hw )
     # Set the at buffer to hold the value 'AT'
     at( 0 : 2  )       = "AT"                   # Set the at buffer to the value at
     ok( 0 : 2  )       = "OK"                   # Set the ok buffer to the value ok 
+    start( 0 : 5)      = "START"                # Set the start buffer to the value start
     netok( 0 : 3  )    = "0,1"                  # Set the netok buffer to the correct response for the network
     hn( 0 : 13 )       = "HW:         \n"       # Set the hardware number buffer, will fill in the blanks later
     sn( 0 : 17 )       = "SW:             \n"   # Set the software number buffer, will fill in the blanks later
     sms_comm( 0 : 20 ) = "AT+CMGS=            " # Set the sms command buffer, will fill in the blanks later
 
-    # Set a repeatable timer for every +- 1 second which will be used to 
+    # Set a repeatable timer for every +- 0.5 second which will be used to 
     # perform the bext check for the initialisation
     # 
     # Arg1 : The number of oscillations before the timer interrupts. The
     #        frequency of  oscillation of the clock is +1 32700Hz so we have set
-    #        a timer for approximately 3 seconds from boot
+    #        a timer for approximately 0.5 seconds from boot
     # Arg2 : The handle of the timer
     # Arg3 : Repeated. We set this to 0 since the timer must continually
     #        interrupt, in case there was no connection on the previous attempts
     call hardware_set_soft_timer( 18760, 1, 0 )
 
+    # Set a once off timer after +- 4 seconds which will allow an information regarding
+    # starting the process to be displayed to the user
+    # 
+    # Arg1  : The number of oscillations before the interrupt
+    # Arg2  : The handle of the timer
+    # Arg3  : Once off timer
+    call hardware_set_soft_timer( 128000, 2, 1 )
+
     # Set the connected state to represent no checks completed
-    connected = 0
+    connected = -2
 
     # Set that the RSSI value must be used to determine if an sms must be sent
     use_rssi = 1
@@ -248,7 +259,7 @@ event hardware_soft_timer( handle )
         if connected = 5 then
             connected = 6               # Set that this part is complete
             call attributes_write( xgatt_data, 0, 18, "ENTER CELL NUMBER\n" )
-        end if 
+        end if  
 
         # The first test is to check if the telit module is on
         # We will send the 'AT' command to the telit which should
@@ -382,7 +393,16 @@ event hardware_soft_timer( handle )
                 call attributes_write( xgatt_data, 0, 17, "CHECKING NETWORK\n" )
                 connected = 3                   # Set that this stage in not complete
             end if
-        end if  
+        end if 
+    else
+        # If the second timer caused the interrupt
+        if handle = 2 then  
+            # Display the start info message
+            call attributes_write( xgatt_data, 0, 17, "'START' TO BEGIN\n" )
+
+            # Set state to look for "START" from user
+            connected = -1
+        end if 
     end if
 end 
 
@@ -397,6 +417,13 @@ event attributes_value( connection, reason, handle, offset, value_len, value_dat
         # Copy the length
         out_len = value_len
 
+        if connected = -1 then 
+            # Check if the message says 'Start'
+            if memcmp( out( 0 ), start( 0 ), 5 ) then 
+                connected = 0
+                call attributes_write( xgatt_data, 0, 9, "STARTING\n" )
+            end if
+        end if 
         if connected = 11 then
             # Enable TX watermarks so that the data can be sent over UART
             call system_endpoint_set_watermarks( 5, $ff, out_len )
