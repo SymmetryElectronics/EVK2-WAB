@@ -61,6 +61,13 @@ dim rssi_tens
 dim rssi_ones
 dim rssi_temp
 dim rssi_display(4)
+dim rssi_average    # Average of last 3 rssi samples
+dim rssi_counter    # The number of values used for averaging the rssi value
+dim rssi_previous   # Previous rssi value
+dim can_start       # If the program can start yet
+dim start_displayed # If the start message has been displayed
+dim iters_till_start_displayed    # Number of iterations till the start message is displayed
+
 # ============================================================================================================== #
 #                                            GENERAL PROCEDURES                                                  #
 # ============================================================================================================== #
@@ -115,6 +122,7 @@ end
 # Tells the Telit module to send an SMS
 procedure send_sms()
 
+    # Reset watermarks
     call system_endpoint_set_watermarks( 5, 0, $ff )
             
     # Send the sms and the CTRL-Z character to the Telit 
@@ -123,7 +131,20 @@ procedure send_sms()
 
     # Tell the user that the message has sent
     call attributes_write( xgatt_data, 0, 9, "SMS SENT\n" )
+
+    # Tell BLE module we got its response
+    call attributes_user_write_response( 0, 0 )  
 end
+
+# Reset Telit so state is known
+procedure reset_telit()
+
+    # Disable watermarks
+    call system_endpoint_set_watermarks( 5, 0, $ff )
+
+    # Reset Telit sms buffer
+    call system_endpoint_tx( 5, 1, "\x1b" )
+end 
 
 # Converts a 3 byte ASCII value to an int
 # Value to convert is rssi_input
@@ -139,9 +160,28 @@ procedure rssi_convert()
     rssi_value = ( temp_tens * 10 ) + temp_ones
 
     # Incorporate negative of RSSI and two's complement
-    rssi_value = 256 - rssi_value  
+    rssi_value = 256 - rssi_value 
 end 
 
+# Displays the rssi value
+procedure display_rssi()
+    
+    # Convert 'Hex' to decimal and swap sign
+    rssi_temp = -1 * ( rssi_average - 256 )
+    
+    # Extract the decimals 
+    rssi_tens = ( rssi_temp / 10 )
+    rssi_ones = rssi_temp - ( 10 * rssi_tens )
+
+    # Convert to ASCII for display, add a negative
+    rssi_display( 0 : 1 ) = "-"
+    rssi_display( 1 : 1 ) = rssi_tens + 48
+    rssi_display( 2 : 1 ) = rssi_ones + 48
+    rssi_display( 3 : 1 ) = "\n"
+
+    # Send user an information messgae
+    call attributes_write( xgatt_data, 0, 4, rssi_display( 0 : 4 ) )
+end
 # ============================================================================================================== #
 #                                              MAIN FUNCTIONALITY                                                #
 # ============================================================================================================== #
@@ -181,13 +221,27 @@ event system_boot( major, minor, patch, build, ll_version, protocol, hw )
     # Arg1  : The number of oscillations before the interrupt
     # Arg2  : The handle of the timer
     # Arg3  : Once off timer
-    call hardware_set_soft_timer( 128000, 2, 1 )
+    #call hardware_set_soft_timer( 128000, 2, 1 )
+
+    # Set that we can't start yet
+    can_start = 0
+
+    # Set that the start message has not been displayed
+    start_displayed = 0
+
+    # 5 iterations till the start message is displayed
+    iters_till_start_displayed = 6
 
     # Set the connected state to represent no checks completed
-    connected = -2
+    connected = -1
 
     # Set that the RSSI value must be used to determine if an sms must be sent
     use_rssi = 1
+
+    # Set rssi variables
+    rssi_counter  = 1
+    rssi_average  = 0
+    rssi_previous = 0
 end
 
 # Executed when the timer interrupt is triggered
@@ -196,47 +250,51 @@ event hardware_soft_timer( handle )
     # Check that the timer with handle = 1 caused the interrupt
     if handle = 1 then
 
+        # If the sms can be sent when using RSSI
+        if connected = 10 then
+            # Send sms 
+            call send_sms()
+
+            # Reset system (waiting for user to send 'START')
+            # NOTE : If you want to be able to constantly send messges to the Telit module from
+            #        the app instead of restarting, then set connected = 11 instead
+            connected = -1
+        end if
+
         # If the prompt for the sms message is open on the Telit
         if connected = 9 then
             if use_rssi = 1 then 
                 # Get the rssi strength
                 call connection_get_rssi( 0 )( conn_handle, rssi ) 
                 
+                # Calculate the average of the last 2 values (can extend to more for more accuracy) 
+                rssi_average  = ( ( ( rssi_average * rssi_counter ) - rssi_previous ) + rssi ) / rssi_counter
+                rssi_previous = rssi
+                
+                # Increment counter
+                if rssi_counter < 2 then 
+                    rssi_counter = rssi_counter + 1 
+                end if
+                
                 # Check rssi strength against user defined value
-                if rssi < rssi_value then 
-                    # Out of range, so send the SMS 
-                    call send_sms()
-
-                    # Set that the sms has been sent
-                    # NOTE : If you want to be able to constantly send messges to the Telit 
-                    #        module after the example is finished, set connected = 11 here
+                if rssi_average < rssi_value then                    
+                    # Display RSSI value
+                    call display_rssi()
+        
+                    # The sms can be sent
                     connected = 10
                 else 
-                    # Display the RSSI value (which is twos complement)
-                    # Convert from 'hex' to something a person will understand
-                    rssi_temp = -1 * ( rssi - 256 )          # 'Hex' to decimal, and swap sign
-                    
-                    # Extract the decimals 
-                    rssi_tens = ( rssi_temp / 10 )
-                    rssi_ones = rssi_temp - ( 10 * rssi_tens )
-
-                    # Convert to ASCII for display, add a negative
-                    rssi_display( 0 : 1 ) = "-"
-                    rssi_display( 1 : 1 ) = rssi_tens + 48
-                    rssi_display( 2 : 1 ) = rssi_ones + 48
-                    rssi_display( 3 : 1 ) = "\n"
-
-                    # Send user an information messgae
-                    call attributes_write( xgatt_data, 0, 4, rssi_display( 0 : 4 ) )
+                    # Display the RSSI value 
+                    call display_rssi()
                 end if 
             else 
                 # Using user input condition, just send sms
                 call send_sms()
                 
-                # Set that the sms has been sent
-                # NOTE : If you want to be able to constantly send messges to the Telit 
-                #        module after the example is finished, set connected = 11 here
-                connected = 10  
+                # Reset system (waiting for user to send 'START')
+                # NOTE : If you want to be able to constantly send messges to the Telit module from
+                #        the app instead of restarting, then set connected = 11 instead 
+                connected = -1
             end if
         end if 
 
@@ -393,16 +451,23 @@ event hardware_soft_timer( handle )
                 call attributes_write( xgatt_data, 0, 17, "CHECKING NETWORK\n" )
                 connected = 3                   # Set that this stage in not complete
             end if
-        end if 
-    else
-        # If the second timer caused the interrupt
-        if handle = 2 then  
-            # Display the start info message
-            call attributes_write( xgatt_data, 0, 17, "'START' TO BEGIN\n" )
-
-            # Set state to look for "START" from user
-            connected = -1
-        end if 
+        end if
+        
+        # Before starting 
+        if connected = -1 then 
+            # If a sufficient number of iterations of the loop have passed
+            if can_start = iters_till_start_displayed then
+                # If the start message has not yet been displayed
+                if start_displayed = 0 then 
+                    # Display the start message to the app
+                    call attributes_write( xgatt_data, 0, 17, "'START' TO BEGIN\n" )
+                    start_displayed = 1
+                end if
+            else    
+                # Otherwise increment the counter
+                can_start = can_start + 1
+            end if 
+        end if
     end if
 end 
 
@@ -417,13 +482,6 @@ event attributes_value( connection, reason, handle, offset, value_len, value_dat
         # Copy the length
         out_len = value_len
 
-        if connected = -1 then 
-            # Check if the message says 'Start'
-            if memcmp( out( 0 ), start( 0 ), 5 ) then 
-                connected = 0
-                call attributes_write( xgatt_data, 0, 9, "STARTING\n" )
-            end if
-        end if 
         if connected = 11 then
             # Enable TX watermarks so that the data can be sent over UART
             call system_endpoint_set_watermarks( 5, $ff, out_len )
@@ -484,12 +542,35 @@ event attributes_value( connection, reason, handle, offset, value_len, value_dat
 
         # Set that this stage of the testing is finished
         connected = 7
+    end if
+ 
+    if can_start = 6 then
+        # Check if the message says 'Start'
+        if memcmp( out( 0 ), start( 0 ), 5 ) then 
+            connected           = 0
+            can_start           = 0
+            start_displayed     = 0
+            call attributes_write( xgatt_data, 0, 9, "STARTING\n" )
+            call attributes_user_write_response( 0, 0 ) 
+        else
+            call attributes_write( xgatt_data, 0, 20, "'START' NOT ENTERED\n" )
+            call attributes_user_write_response( 0, 0 ) 
+        end if
     end if 
 end
 
 
 # Executed when the connection is lost 
-event connection_disconnected( connection, reason )
+event connection_disconnected( connection, reason ) 
+    # Reset Telit
+    call reset_telit()
+
+    # Reset BLE module
+    connected                   = -1
+    can_start                   = 0
+    start_displayed             = 0
+    iters_till_start_displayed  = 8         # Wait longer before displaying start message
+
     # Disable all watermarks
     call system_endpoint_set_watermarks( 5, 0, 0 )
 

@@ -1,4 +1,4 @@
-208
+232
 0:0	GAP_AD_FLAG_BREDR_NOT_SUPPORTED
 0:0	GAP_AD_FLAG_GENERAL_DISCOVERABLE
 0:0	GAP_AD_FLAG_LIMITED_DISCOVERABLE
@@ -107,3 +107,9 @@
 196:4	rssi_ones
 200:4	rssi_temp
 204:4	rssi_display
+208:4	rssi_average
+212:4	rssi_counter
+216:4	rssi_previous
+220:4	can_start
+224:4	start_displayed
+228:4	iters_till_start_displayed
