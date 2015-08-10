@@ -2,6 +2,7 @@
 
 <hardware>
     <sleeposc enable="true" ppm="30" />
+    <usb enable="true" endpoint="none" />
     <sleep enable="false" />
     <txpower power="15" bias="5" />
     <script enable="true" />
