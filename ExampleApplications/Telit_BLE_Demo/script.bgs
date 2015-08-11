@@ -236,7 +236,7 @@ event system_boot( major, minor, patch, build, ll_version, protocol, hw )
     connected = -1
 
     # Set that the RSSI value must be used to determine if an sms must be sent
-    use_rssi = 1
+    use_rssi = 0
 
     # Set rssi variables
     rssi_counter  = 1
