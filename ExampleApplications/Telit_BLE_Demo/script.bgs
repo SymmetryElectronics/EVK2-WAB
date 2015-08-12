@@ -215,14 +215,6 @@ event system_boot( major, minor, patch, build, ll_version, protocol, hw )
     #        interrupt, in case there was no connection on the previous attempts
     call hardware_set_soft_timer( 18760, 1, 0 )
 
-    # Set a once off timer after +- 4 seconds which will allow an information regarding
-    # starting the process to be displayed to the user
-    # 
-    # Arg1  : The number of oscillations before the interrupt
-    # Arg2  : The handle of the timer
-    # Arg3  : Once off timer
-    #call hardware_set_soft_timer( 128000, 2, 1 )
-
     # Set that we can't start yet
     can_start = 0
 

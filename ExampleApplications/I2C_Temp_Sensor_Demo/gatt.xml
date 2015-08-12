@@ -41,8 +41,8 @@
 		
 		<characteristic uuid="2a1c" id="xgatt_htm_2a1c">
 			<description>Temperature Measurement</description>
-			<properties write="true" indicate="true"/>
-			<value type="hex">0000000000</value>
+			<properties notify="true" write="true" indicate="true"/>
+			<value variable_length="true" length="20"/>
 		</characteristic>
 	</service>
 	
