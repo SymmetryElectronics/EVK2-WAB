@@ -1,4 +1,4 @@
-16
+20
 0:0	GAP_AD_FLAG_BREDR_NOT_SUPPORTED
 0:0	GAP_AD_FLAG_GENERAL_DISCOVERABLE
 0:0	GAP_AD_FLAG_LIMITED_DISCOVERABLE
@@ -77,4 +77,4 @@
 0:0	system_endpoint_uart1
 0:0	system_endpoint_usb
 0:0	xgatt_data
-0:16	message
+0:20	message

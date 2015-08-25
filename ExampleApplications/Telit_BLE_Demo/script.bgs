@@ -44,7 +44,8 @@ dim result          # Endpoint RX error code
 dim at(2)           # AT command for Telit
 dim ok(2)           # OK response from Telit
 dim start(5)        # Start message for starting the process
-dim netok(3)        # Telit response if network is present
+dim net_home(3)     # Telit response if network is in home state
+dim net_roam(3)     # Telit response if network is in raming state
 dim hn(13)          # Hardware number buffer
 dim sn(17)          # Software number buffer
 dim cgsn(6)         # Command to query the Telit for it's information
@@ -57,10 +58,10 @@ dim rssi_input(2)   # ASCII RSSI input from user
 dim rssi_value      # integer RSSI input from user
 dim temp_tens       # Temp var for RSSI tens component
 dim temp_ones       # Temp var for RSSI ones component
-dim rssi_tens
-dim rssi_ones
-dim rssi_temp
-dim rssi_display(4)
+dim rssi_tens       # Value of the tens component of the rssi value
+dim rssi_ones       # Value of the ones component of the rssi value
+dim rssi_temp       # Temp variable for helping determine the rssi value
+dim rssi_display(4) # Buffer to hold the rssi value so that it can be displayed on the app
 dim rssi_average    # Average of last 3 rssi samples
 dim rssi_counter    # The number of values used for averaging the rssi value
 dim rssi_previous   # Previous rssi value
@@ -196,13 +197,14 @@ event system_boot( major, minor, patch, build, ll_version, protocol, hw )
     call gap_set_mode( gap_general_discoverable, gap_undirected_connectable )
 
     # Set the at buffer to hold the value 'AT'
-    at( 0 : 2  )       = "AT"                   # Set the at buffer to the value at
-    ok( 0 : 2  )       = "OK"                   # Set the ok buffer to the value ok 
-    start( 0 : 5)      = "START"                # Set the start buffer to the value start
-    netok( 0 : 3  )    = "0,1"                  # Set the netok buffer to the correct response for the network
-    hn( 0 : 13 )       = "HW:         \n"       # Set the hardware number buffer, will fill in the blanks later
-    sn( 0 : 17 )       = "SW:             \n"   # Set the software number buffer, will fill in the blanks later
-    sms_comm( 0 : 20 ) = "AT+CMGS=            " # Set the sms command buffer, will fill in the blanks later
+    at( 0 : 2  )        = "AT"                      # At buffer for sending a command to the Telit
+    ok( 0 : 2  )        = "OK"                      # Ok buffer for checking Telit responses
+    start( 0 : 5)       = "START"                   # Start buffer to check for START message
+    net_home( 0 : 3 )   = "0,1"                     # Response if home network is registered for Telit
+    net_roam( 0 : 3 )   = "0,5"                     # Response if roaming is registered for Telit 
+    hn( 0 : 13 )        = "HW:         \n"          # Hardware number buffer for comparison
+    sn( 0 : 17 )        = "SW:             \n"      # Software number buffer
+    sms_comm( 0 : 20 )  = "AT+CMGS=            "    # Sms command buffer
 
     # Set a repeatable timer for every +- 0.5 second which will be used to 
     # perform the bext check for the initialisation
@@ -221,14 +223,14 @@ event system_boot( major, minor, patch, build, ll_version, protocol, hw )
     # Set that the start message has not been displayed
     start_displayed = 0
 
-    # 5 iterations till the start message is displayed
+    # 5 iterations untill the start message is displayed
     iters_till_start_displayed = 6
 
     # Set the connected state to represent no checks completed
     connected = -1
 
     # Set that the RSSI value must be used to determine if an sms must be sent
-    use_rssi = 0
+    use_rssi = 1 
 
     # Set rssi variables
     rssi_counter  = 1
@@ -299,8 +301,8 @@ event hardware_soft_timer( handle )
                 connected = 8
             else 
                 # Using the user input for the message sending
-                connected = 8               # Set that this part is completd
                 call attributes_write( xgatt_data, 0, 18, "ENTER NUM (0-9):\n" )    
+                connected = 8               # Set that this part is completd
             end if
         end if 
 
@@ -435,13 +437,20 @@ event hardware_soft_timer( handle )
             # Sometimes the Telit responds with a blank message
             # and then 'OK'. If this happens then it gets ignored 
             # and another attempt is made on the next interrupt
-            if memcmp( in( 7 ), netok( 0 ), 3 ) = 1 then
+            if memcmp( in( 7 ), net_home( 0 ), 3 ) = 1 then
                 connected = 5                   # Set that this stage is complete
                 call attributes_write( xgatt_data, 0, 16, "NETWORK PRESENT\n" ) 
             else
-                # Write nothing (to flush the buffer) and try again
-                call attributes_write( xgatt_data, 0, 17, "CHECKING NETWORK\n" )
-                connected = 3                   # Set that this stage in not complete
+                # Check if the network is in the roaming state
+                if memcmp( in( 7 ), net_roam( 0 ), 3 ) = 1 then 
+                    connected = 5           # Set that this stage is complete
+                    call attributes_write( xgatt_data, 0, 16, "NETWORK PRESENT\n" )
+                else
+                    # No network connection in present, so try again
+                    # Write nothing (to flush the buffer) and try again
+                    call attributes_write( xgatt_data, 0, 17, "CHECKING NETWORK\n" )
+                    connected = 3                   # Set that this stage in not complete
+                end if 
             end if
         end if
         
@@ -536,8 +545,8 @@ event attributes_value( connection, reason, handle, offset, value_len, value_dat
         connected = 7
     end if
  
-    if can_start = 6 then
-        # Check if the message says 'Start'
+    if can_start = iters_till_start_displayed then
+        # Check if the message says 'START'
         if memcmp( out( 0 ), start( 0 ), 5 ) then 
             connected           = 0
             can_start           = 0
@@ -554,7 +563,7 @@ end
 
 # Executed when the connection is lost 
 event connection_disconnected( connection, reason ) 
-    # Reset Telit
+    # Reset Telit bu flushing the sms buffer
     call reset_telit()
 
     # Reset BLE module

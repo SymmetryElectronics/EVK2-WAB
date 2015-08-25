@@ -33,7 +33,7 @@
 	                		<data>060001</data>
 	                	</descriptor>
 	                	<descriptor Type="24">
-	                		<data>010000</data>
+	                		<data>010301</data>
 	                	</descriptor>
 	                	<endpoint bEndpointAddress="82" bmAttributes="3" wMaxPacketSize="40" bInterval="40">
 	                	</endpoint>
