@@ -40,10 +40,15 @@
 		<description>Health Thermometer Service</description>
 		
 		<characteristic uuid="2a1c" id="xgatt_htm_2a1c">
-			<description>Temperature Measurement</description>
-			<properties notify="true" write="true" indicate="true"/>
-			<value variable_length="true" length="20"/>
-		</characteristic>
+			<description>Celsius temperature</description>
+			<properties indicate="true"/>
+			<value type="hex">0000000000</value>
+			
+			<descriptor uuid="2902">
+				<properties read="true" write="true" />
+				<value type="hex" >0002</value>
+			</descriptor>
+		</characteristic>	
 	</service>
 	
 </configuration>
