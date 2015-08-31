@@ -29,6 +29,10 @@
 #                                                                                                                #
 # 2015-06-23        : Added functionality for sending an sms based on the RSSI connection strength               #
 #                                                                                                                #
+# 2015-08-04        : Added mean calculation for RSSI value for 'smoother' RSSI values                           #
+#                                                                                                                #
+# 2015-08-24        : Fixed bugs related to disconnection, and added check for roaming state for Telit network   #
+#                                                                                                                #
 # ============================================================================================================== #
 
 dim icomma(1)       # Buffer that holds the value of the " character
